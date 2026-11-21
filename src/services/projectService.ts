@@ -38,7 +38,7 @@ export async function createProject(
   } = {},
 ): Promise<Project> {
   const now = Date.now();
-  const project: Project = {
+  const base = {
     id: generateProjectId(),
     name: init.name?.trim() || DEFAULT_PROJECT_NAME,
     createdAt: now,
@@ -47,14 +47,15 @@ export async function createProject(
     appState: init.appState ?? {},
     files: init.files ?? {},
   };
-  await projectStorage.createProject(project);
+  await projectStorage.createProject(base);
   notifyProjectsChanged();
+  const project: Project = { ...base, localVersion: 1, syncedVersion: 0, remoteRevision: null };
   return project;
 }
 
 export async function renameProject(id: string, name: string) {
   const trimmed = name.trim() || DEFAULT_PROJECT_NAME;
-  const meta = await projectStorage.updateMeta(id, { name: trimmed, updatedAt: Date.now() });
+  const meta = await projectStorage.renameProject(id, trimmed, Date.now());
   notifyProjectsChanged();
   return meta;
 }
@@ -78,6 +79,7 @@ export async function duplicateProject(id: string) {
 }
 
 export async function deleteProject(id: string) {
-  await projectStorage.deleteProject(id);
+  // The tombstone lets the delete reach your other devices.
+  await projectStorage.deleteProject(id, { tombstone: true });
   notifyProjectsChanged();
 }

@@ -281,10 +281,39 @@ export function useAutosave(projectId: string, initialFiles: BinaryFiles) {
     };
   }, [flush, refreshThumbnail]);
 
-  return { onChange, flush, status, error, lastSavedAt };
+  /**
+   * The editor just took in a scene from another device, and the sync engine
+   * persists it. Treat it as already saved, so it isn't written (and synced)
+   * straight back. Any pending local edits are part of that merged scene.
+   */
+  const adoptBaseline = useCallback(
+    (elements: readonly ExcalidrawElement[], appState: AppState, files: BinaryFiles) => {
+      const s = ref.current;
+      if (s.debounceTimer) {
+        clearTimeout(s.debounceTimer);
+        s.debounceTimer = null;
+      }
+      const persisted = pickPersistedAppState(appState as unknown as Record<string, unknown>);
+      s.baselineSet = true;
+      s.elementsHash = hashElementsVersion(elements);
+      s.appStateKey = JSON.stringify(persisted);
+      s.latest = { elements: liveElements(elements), appState: persisted, files };
+      for (const id of Object.keys(files)) s.savedFileIds.add(id);
+      s.dirty = false;
+      s.contentDirty = false;
+      s.thumbnailDirty = true;
+    },
+    [],
+  );
+
+  return { onChange, flush, adoptBaseline, status, error, lastSavedAt };
 }
 
-/** Deleted elements are only needed for in-session undo, which isn't persisted. */
+/**
+ * Deleted elements are kept as tombstones (isDeleted: true): when two devices'
+ * scenes are merged, a tombstone with a higher version is what makes a delete
+ * win over a stale copy of the element. They're excluded from exports/previews.
+ */
 function liveElements(elements: readonly ExcalidrawElement[]) {
-  return elements.filter((el) => !el.isDeleted);
+  return elements;
 }

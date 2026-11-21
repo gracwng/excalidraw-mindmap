@@ -43,7 +43,16 @@ export interface ProjectMeta {
   createdAt: number;
   /** Last time the drawing content or name changed. */
   updatedAt: number;
+  /** Bumped on every local content or name change. */
+  localVersion: number;
+  /** The localVersion that was last pushed to / pulled from the cloud. Dirty when they differ. */
+  syncedVersion: number;
+  /** Cloud revision this device last saw, or null if never synced. */
+  remoteRevision: number | null;
 }
+
+/** Appstate keys that describe *this device's* view and are never synced. */
+export const DEVICE_ONLY_APP_STATE_KEYS = ["scrollX", "scrollY", "zoom"] as const;
 
 /** The drawing itself, stored separately from metadata so the dashboard stays fast. */
 export interface ProjectScene {
