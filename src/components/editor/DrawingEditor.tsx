@@ -1,6 +1,13 @@
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { Excalidraw, MainMenu, WelcomeScreen } from "@excalidraw/excalidraw";
+import {
+  CaptureUpdateAction,
+  Excalidraw,
+  MainMenu,
+  WelcomeScreen,
+  reconcileElements,
+} from "@excalidraw/excalidraw";
+import type { RemoteExcalidrawElement } from "@excalidraw/excalidraw/data/reconcile";
 import "@excalidraw/excalidraw/index.css";
 import type {
   AppState,
@@ -9,6 +16,7 @@ import type {
   ExcalidrawInitialDataState,
 } from "@excalidraw/excalidraw/types";
 import type { ExcalidrawElement } from "@excalidraw/excalidraw/element/types";
+import { registerActiveEditor } from "../../lib/activeEditors";
 import { EditorHeader } from "./EditorHeader";
 import { ConfirmDialog } from "../common/ConfirmDialog";
 import { errorMessage, useToast } from "../common/toastContext";
@@ -55,7 +63,34 @@ export function DrawingEditor({ project }: DrawingEditorProps) {
     };
   });
 
-  const { onChange: autosaveOnChange } = autosave;
+  const { onChange: autosaveOnChange, flush: autosaveFlush, adoptBaseline } = autosave;
+
+  // Let the sync engine merge changes from other devices into this open editor.
+  useEffect(() => {
+    return registerActiveEditor(project.id, {
+      flush: autosaveFlush,
+      mergeRemote: (remoteElements, files) => {
+        const api = apiRef.current;
+        if (!api) return remoteElements;
+        if (files.length) api.addFiles(files);
+        const merged = reconcileElements(
+          api.getSceneElementsIncludingDeleted(),
+          remoteElements as readonly RemoteExcalidrawElement[],
+          api.getAppState(),
+        );
+        // NEVER: remote changes don't go into this device's undo history.
+        api.updateScene({ elements: merged, captureUpdate: CaptureUpdateAction.NEVER });
+        const current = api.getSceneElementsIncludingDeleted();
+        adoptBaseline(current, api.getAppState(), api.getFiles());
+        return current;
+      },
+      onRemoteRename: (next) => setName(next),
+      onRemoteDelete: () => {
+        toast("This mind map was deleted on another device.");
+        navigate("/", { replace: true });
+      },
+    });
+  }, [project.id, autosaveFlush, adoptBaseline, navigate, toast]);
   const onChange = useCallback(
     (elements: readonly ExcalidrawElement[], appState: AppState, files: BinaryFiles) => {
       autosaveOnChange(elements, appState, files);

@@ -196,6 +196,129 @@ select {
   background: var(--mb-surface-low);
 }
 
+.mb-icon-button--wide {
+  width: auto;
+  padding: 0 0.625rem;
+}
+
+.mb-link-button {
+  border: none;
+  background: none;
+  padding: 0;
+  color: var(--mb-primary);
+  font-size: 0.875rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+.mb-link-button:hover {
+  text-decoration: underline;
+}
+
+/* ---------- Sync ---------- */
+
+.mb-sync__trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+  font-size: 0.8125rem;
+  font-weight: 500;
+}
+.mb-sync--ok {
+  color: var(--mb-success);
+}
+:root[data-theme="dark"] .mb-sync--ok {
+  color: #8ce99a;
+}
+.mb-sync--busy {
+  color: var(--mb-primary);
+}
+.mb-sync--muted {
+  color: var(--mb-text-muted);
+}
+.mb-sync--error {
+  color: var(--mb-danger-strong);
+}
+.mb-sync > .mb-icon-button {
+  color: inherit;
+}
+.mb-sync .mb-menu__item {
+  color: var(--mb-text);
+}
+.mb-sync__header {
+  display: flex;
+  flex-direction: column;
+  gap: 0.125rem;
+  padding: 0.375rem 0.625rem;
+  font-size: 0.8125rem;
+  color: var(--mb-text-muted);
+  max-width: 18rem;
+  overflow-wrap: anywhere;
+}
+.mb-sync__header strong {
+  color: var(--mb-text);
+  font-weight: 600;
+}
+.mb-sync-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 0 0.25rem;
+}
+.mb-sync--busy svg,
+.mb-sync-badge.mb-sync--busy svg {
+  animation: mb-pulse 1s ease-in-out infinite;
+}
+
+.mb-auth {
+  display: flex;
+  flex-direction: column;
+  gap: 0.875rem;
+}
+.mb-auth .mb-modal__title,
+.mb-auth .mb-modal__body {
+  margin: 0;
+}
+.mb-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.375rem;
+  font-size: 0.8125rem;
+  font-weight: 600;
+}
+.mb-field input {
+  height: 2.5rem;
+  padding: 0 0.75rem;
+  border-radius: var(--mb-radius);
+  border: 1px solid var(--mb-border-strong);
+  background: var(--mb-surface);
+  font-size: 1rem; /* 16px+ stops iOS from zooming the page on focus */
+  font-weight: 400;
+}
+.mb-field input:focus {
+  outline: none;
+  border-color: var(--mb-primary);
+  box-shadow: 0 0 0 1px var(--mb-primary);
+}
+.mb-auth__error {
+  margin: 0;
+  color: var(--mb-danger-strong);
+  font-size: 0.875rem;
+}
+.mb-auth__notice {
+  margin: 0;
+  padding: 0.625rem 0.75rem;
+  border-radius: var(--mb-radius);
+  background: var(--mb-primary-light);
+  color: var(--mb-text);
+  font-size: 0.875rem;
+}
+.mb-auth__actions {
+  align-items: center;
+  margin-top: 0.5rem;
+}
+.mb-auth__spacer {
+  flex: 1;
+}
+
 /* ---------- Dropdown menu (mirrors Excalidraw's dropdown-menu) ---------- */
 
 .mb-menu {
@@ -456,6 +579,7 @@ select {
   box-shadow: var(--mb-shadow-hover);
 }
 .mb-card__preview {
+  text-decoration: none;
   display: flex;
   align-items: center;
   justify-content: center;

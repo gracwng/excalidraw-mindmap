@@ -17,7 +17,9 @@ adds a project dashboard, so you can keep many independent mind maps that save a
   styles come back when you reopen a project.
 - **Import/export** — native `.excalidraw` files (images included), plus PNG and SVG.
   You can also drag `.excalidraw` files onto the dashboard.
-- **Local-first** — everything lives in your browser's IndexedDB. No backend, no account.
+- **Local-first** — everything lives in your browser's IndexedDB and works offline.
+- **Optional cloud sync** (Supabase) — sign in on your laptop and iPad and the same mind
+  maps appear on both, with live updates and per-shape merging of simultaneous edits.
 
 ## Getting started
 
@@ -40,15 +42,45 @@ itself instead of using a CDN (`window.EXCALIDRAW_ASSET_PATH = "/"`).
 2. Open **Project → Settings → Deployment Protection**, turn on **Vercel Authentication**
    and set it to **All Deployments**. Visitors must then be logged in to your Vercel account.
 
-Your drawings are never uploaded: they live in each browser's IndexedDB. The hosted site
-only serves the app code, so anyone else who opens the URL sees an empty app.
+Without signing in, drawings never leave the device. With sync on, they're stored in your
+Supabase project, readable only by your account (row-level security).
 
 ### iPad
 
 Open the site in Safari, then **Share → Add to Home Screen** to run it full-screen.
 Excalidraw turns on pen mode when it detects an Apple Pencil: the pencil draws and your
-fingers pan and zoom. Each device keeps its own projects. Use **⋯ → Download .excalidraw**
-and **Import** to move a drawing between devices.
+fingers pan and zoom. Sign in to sync (below) to see the same projects as on your laptop.
+
+## Cloud sync (Supabase)
+
+`.env` holds the project URL and publishable key. Both are public by design; never put the
+`service_role`/secret key in this repo. One-time setup in the Supabase dashboard:
+
+1. **SQL Editor → New query**, paste [`supabase/schema.sql`](supabase/schema.sql), **Run**.
+   Creates the `projects` table, a private `mindboard-files` bucket for images, row-level
+   security so each account only sees its own data, and realtime updates.
+2. **Authentication → URL Configuration**: set *Site URL* to your Vercel URL and add it,
+   plus `http://localhost:5173/**`, to *Redirect URLs* (used by the email confirmation link).
+3. In the app, **Sign in to sync → Create an account**, confirm the email, then sign in.
+4. **Authentication → Sign In / Providers → Email**: turn off *Allow new users to sign up*,
+   so nobody else can create an account.
+
+How it works (`src/services/sync/`):
+
+- IndexedDB stays the source of truth on each device; `SyncEngine` mirrors it to the cloud
+  in the background (after edits, on realtime notifications, on focus/online, every minute).
+- Each project row has a `revision`. Writes only succeed if the cloud is still at the
+  revision this device last saw. Otherwise the device downloads the newer copy, merges it
+  with Excalidraw's `reconcileElements` (per shape, newer version wins) and retries.
+- Deleted shapes are kept as tombstones (`isDeleted`), so deletes win over stale copies.
+  Deleted projects become tombstone rows.
+- Changes arriving for the project you have open are merged into the live canvas,
+  outside your undo history.
+- Each device keeps its own zoom and scroll position.
+- Images are uploaded once to `mindboard-files/<user>/<project>/<file>`.
+
+Signing out keeps this device's local copies. Signing in with a different account uploads
+this device's projects to that account.
 
 ## Architecture
 
@@ -94,6 +126,19 @@ large, image-heavy drawings. Images are only written once, the first time they a
 
 ## Testing
 
+`npm test` runs the sync engine unit tests (two simulated devices with separate
+IndexedDB databases and an in-memory cloud: merges, deletes, images, offline, no ping-pong).
+
+`tests/sync_e2e.py` drives two real browsers ("laptop" and "iPad") against
+`scripts/dev-sync-server.mjs`, a local stand-in for Supabase:
+
+```bash
+node scripts/dev-sync-server.mjs 8787 &
+VITE_FAKE_SYNC_URL=http://localhost:8787 npx vite build --outDir /tmp/dist-fake
+npx vite preview --outDir /tmp/dist-fake --port 4174 &
+python3 tests/sync_e2e.py http://localhost:4174 http://localhost:8787 sync-output
+```
+
 `tests/e2e.py` is a Playwright (Python) end-to-end suite covering create, draw, undo/redo,
 refresh, viewport restore, images, thumbnails, duplicate independence, rapid-edit flushing,
 import/export, dark mode, search, sort, rename and delete.
@@ -109,4 +154,6 @@ python3 tests/e2e.py http://localhost:4173 test-output
 - Excalidraw logs `Failed to use workers for subsetting` when exporting under Vite.
   It falls back to the main thread automatically and exports work normally.
 - Undo history is per session (same as Excalidraw).
-- Two tabs editing the *same* project at once will overwrite each other (last write wins).
+- With sync off, two tabs editing the *same* project at once will overwrite each other.
+  With sync on, they merge.
+- Free Supabase projects pause after about a week without use; unpause from the dashboard.

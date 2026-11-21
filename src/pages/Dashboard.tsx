@@ -7,6 +7,7 @@ import { ConfirmDialog } from "../components/common/ConfirmDialog";
 import { errorMessage, useToast } from "../components/common/toastContext";
 import { MoonIcon, PlusIcon, SunIcon, UploadIcon } from "../components/common/icons";
 import { useProjects, type ProjectListItem } from "../hooks/useProjects";
+import { SyncControl } from "../components/sync/SyncControl";
 import { setThemePreference, useThemePreference } from "../lib/theme";
 import {
   createProject,
@@ -146,6 +147,7 @@ export default function Dashboard() {
           <span className="mb-brand__name">Mindboard</span>
         </div>
         <div className="mb-dashboard__header-actions">
+          <SyncControl />
           <button
             type="button"
             className="mb-icon-button"

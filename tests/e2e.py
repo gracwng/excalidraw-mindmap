@@ -18,7 +18,7 @@ def scene_count(page):
     return page.evaluate("""async (id) => {
       const db = await new Promise((res, rej) => { const r = indexedDB.open('mindboard'); r.onsuccess=()=>res(r.result); r.onerror=()=>rej(r.error); });
       const s = await new Promise((res) => { const r = db.transaction('scenes').objectStore('scenes').get(id); r.onsuccess=()=>res(r.result); });
-      db.close(); return s ? s.elements.length : -1; }""", page.url.split('/project/')[1])
+      db.close(); return s ? s.elements.filter(e => !e.isDeleted).length : -1; }""", page.url.split('/project/')[1])
 
 with sync_playwright() as p:
     browser = p.chromium.launch(channel=os.environ.get("PW_CHANNEL") or None, headless=True)

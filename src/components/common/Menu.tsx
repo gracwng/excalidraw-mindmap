@@ -16,10 +16,12 @@ interface MenuProps {
   align?: "start" | "end";
   trigger?: ReactNode;
   className?: string;
+  /** Non-interactive content shown above the items. */
+  header?: ReactNode;
 }
 
 /** A small dropdown styled after Excalidraw's own dropdown menus. */
-export function Menu({ items, label, align = "end", trigger, className }: MenuProps) {
+export function Menu({ items, label, align = "end", trigger, className, header }: MenuProps) {
   const [open, setOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
   const menuId = useId();
@@ -64,7 +66,7 @@ export function Menu({ items, label, align = "end", trigger, className }: MenuPr
     <div className={`mb-menu ${className ?? ""}`} ref={rootRef}>
       <button
         type="button"
-        className="mb-icon-button"
+        className={`mb-icon-button ${trigger ? "mb-icon-button--wide" : ""}`}
         aria-label={label}
         title={label}
         aria-haspopup="menu"
@@ -85,6 +87,8 @@ export function Menu({ items, label, align = "end", trigger, className }: MenuPr
           onClick={(e) => e.stopPropagation()}
           onKeyDown={onMenuKeyDown}
         >
+          {header}
+          {header && <div className="mb-menu__separator" role="separator" />}
           {items.map((item, i) =>
             item === "separator" ? (
               <div key={`sep-${i}`} className="mb-menu__separator" role="separator" />

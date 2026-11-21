@@ -3,6 +3,7 @@ import { Menu } from "../common/Menu";
 import { ArrowLeftIcon, CopyIcon, DownloadIcon, ImageIcon, TrashIcon } from "../common/icons";
 import { ProjectName } from "./ProjectName";
 import { SaveIndicator } from "./SaveIndicator";
+import { SyncBadge } from "../sync/SyncControl";
 import type { SaveStatus } from "../../types/project";
 import type { ExportFormat } from "../../services/importExportService";
 
@@ -32,6 +33,7 @@ export function EditorHeader(props: EditorHeaderProps) {
       </div>
       <div className="mb-editor-header__right">
         <SaveIndicator status={props.status} error={props.error} onRetry={props.onRetrySave} />
+        <SyncBadge />
         <Menu
           label="Project actions"
           items={[
