@@ -31,8 +31,24 @@ npm run preview    # serve the production build
 `predev` / `prebuild` copy Excalidraw's fonts into `public/fonts` so the app serves them
 itself instead of using a CDN (`window.EXCALIDRAW_ASSET_PATH = "/"`).
 
-When deploying, configure your host to fall back to `index.html` for unknown paths
-(SPA routing), so `/project/:id` links work on reload.
+## Deploying (Vercel) and keeping it private
+
+`vercel.json` already sets up the build, SPA routing, `noindex` headers and caching.
+
+1. Go to [vercel.com/new](https://vercel.com/new), import `gracwng/excalidraw-mindmap` and click **Deploy**.
+   Every push to `main` redeploys automatically.
+2. Open **Project → Settings → Deployment Protection**, turn on **Vercel Authentication**
+   and set it to **All Deployments**. Visitors must then be logged in to your Vercel account.
+
+Your drawings are never uploaded: they live in each browser's IndexedDB. The hosted site
+only serves the app code, so anyone else who opens the URL sees an empty app.
+
+### iPad
+
+Open the site in Safari, then **Share → Add to Home Screen** to run it full-screen.
+Excalidraw turns on pen mode when it detects an Apple Pencil: the pencil draws and your
+fingers pan and zoom. Each device keeps its own projects. Use **⋯ → Download .excalidraw**
+and **Import** to move a drawing between devices.
 
 ## Architecture
 
