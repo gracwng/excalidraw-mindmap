@@ -20,6 +20,7 @@ import { projectStorage, ProjectNotFoundError } from "../services/projectStorage
 import { pickPersistedAppState } from "../services/projectService";
 import { updateThumbnail } from "../services/thumbnailService";
 import { notifyProjectsChanged } from "../lib/projectEvents";
+import { clearUnloadBackup, writeUnloadBackup } from "../services/unloadBackup";
 import type { PersistedAppState, SaveStatus } from "../types/project";
 
 const SAVE_DEBOUNCE_MS = 800;
@@ -157,6 +158,8 @@ export function useAutosave(projectId: string, initialFiles: BinaryFiles) {
 
     const promise = run()
       .then(() => {
+        // Everything is in IndexedDB now; an emergency copy would be stale.
+        if (!s.dirty) clearUnloadBackup(projectId);
         s.retryCount = 0;
         safeSet(setError, null);
         safeSet(setStatus, "saved");
@@ -245,11 +248,28 @@ export function useAutosave(projectId: string, initialFiles: BinaryFiles) {
     const flushAll = () => {
       void flush().then(() => refreshThumbnail(true));
     };
+    // Synchronous safety net for edits whose async save may not finish before unload.
+    const backupPending = () => {
+      const s = ref.current;
+      if ((s.dirty || s.saving) && s.latest && !s.projectGone) {
+        writeUnloadBackup(projectId, {
+          elements: s.latest.elements,
+          appState: s.latest.appState,
+          contentChanged: s.contentDirty || !!s.saving,
+          writtenAt: Date.now(),
+        });
+      }
+    };
+    const onPageHide = () => {
+      backupPending();
+      flushAll();
+    };
     const onVisibility = () => {
       if (document.visibilityState === "hidden") flushAll();
     };
     const onBeforeUnload = (event: BeforeUnloadEvent) => {
       const s = ref.current;
+      backupPending();
       if (s.dirty || s.saving) {
         void flush();
       }
@@ -259,14 +279,14 @@ export function useAutosave(projectId: string, initialFiles: BinaryFiles) {
       }
     };
     document.addEventListener("visibilitychange", onVisibility);
-    window.addEventListener("pagehide", flushAll);
+    window.addEventListener("pagehide", onPageHide);
     window.addEventListener("beforeunload", onBeforeUnload);
     return () => {
       document.removeEventListener("visibilitychange", onVisibility);
-      window.removeEventListener("pagehide", flushAll);
+      window.removeEventListener("pagehide", onPageHide);
       window.removeEventListener("beforeunload", onBeforeUnload);
     };
-  }, [flush, refreshThumbnail]);
+  }, [flush, refreshThumbnail, projectId]);
 
   // Flush on unmount (navigating back, switching projects).
   useEffect(() => {
