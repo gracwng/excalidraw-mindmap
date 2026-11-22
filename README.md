@@ -9,6 +9,11 @@ adds a project dashboard, so you can keep many independent mindboards that save 
 
 - **Dashboard** — every mindboard as a card with a live thumbnail, search,
   sort (last modified / created / name), rename, duplicate, delete, export.
+- **Tabs** — like Google Docs tabs: each mindboard can hold several canvases. Add, rename
+  (double-click), duplicate, reorder and delete them from the tab strip in the header.
+- **Links** — write `[words](https://…)` in any text or box and it shows just the words,
+  linked; a typed URL links itself; paste a URL with shapes selected to link them.
+  ⌘-click (Ctrl-click on Windows) a linked shape to open it, or tap its link icon on iPad.
 - **The real Excalidraw editor** (`@excalidraw/excalidraw@0.18.1`) with its default UI,
   plus a slim header: `← Projects · Project name ✎ · Saved · ⋯`.
 - **Autosave** — debounced (800 ms), race-free, flushed when you leave the project,
@@ -16,6 +21,8 @@ adds a project dashboard, so you can keep many independent mindboards that save 
 - **Exact restore** — elements, images, viewport (scroll and zoom) and your last-used
   styles come back when you reopen a project.
 - **Import/export** — native `.excalidraw` files (images included), plus PNG and SVG.
+  A `.excalidraw` file holds one canvas: the editor exports the open tab, and the
+  dashboard exports one file per tab.
   You can also drag `.excalidraw` files onto the dashboard.
 - **Local-first** — everything lives in your browser's IndexedDB and works offline.
 - **Optional cloud sync** (Supabase) — sign in on your laptop and iPad and the same mind
@@ -69,11 +76,13 @@ How it works (`src/services/sync/`):
 
 - IndexedDB stays the source of truth on each device; `SyncEngine` mirrors it to the cloud
   in the background (after edits, on realtime notifications, on focus/online, every minute).
-- Each project row has a `revision`. Writes only succeed if the cloud is still at the
+- Each project row stores its tabs (`tabs` column) and has a `revision`. Writes only succeed if the cloud is still at the
   revision this device last saw. Otherwise the device downloads the newer copy, merges it
   with Excalidraw's `reconcileElements` (per shape, newer version wins) and retries.
 - Deleted shapes are kept as tombstones (`isDeleted`), so deletes win over stale copies.
-  Deleted projects become tombstone rows.
+  Tabs merge the same way: matched by id, name/order/deleted follow the newer tab
+  version, and each tab's canvas merges shape by shape. Deleted tabs and projects
+  become tombstones.
 - Changes arriving for the project you have open are merged into the live canvas,
   outside your undo history.
 - Each device keeps its own zoom and scroll position.
@@ -129,6 +138,9 @@ large, image-heavy drawings. Images are only written once, the first time they a
 `npm test` runs the sync engine unit tests (two simulated devices with separate
 IndexedDB databases and an in-memory cloud: merges, deletes, images, offline, no ping-pong).
 
+`tests/tabs_links_e2e.py` covers tabs and links in one browser, and `tests/tabs_sync_e2e.py`
+syncs tabs between two (same setup as the sync test below).
+
 `tests/sync_e2e.py` drives two real browsers ("laptop" and "iPad") against
 `scripts/dev-sync-server.mjs`, a local stand-in for Supabase:
 
@@ -153,7 +165,9 @@ python3 tests/e2e.py http://localhost:4173 test-output
 
 - Excalidraw logs `Failed to use workers for subsetting` when exporting under Vite.
   It falls back to the main thread automatically and exports work normally.
-- Undo history is per session (same as Excalidraw).
+- Undo history is per session (same as Excalidraw), and per tab.
+- A link belongs to a whole text or shape, not to single words inside it; that's how
+  Excalidraw draws text. With several `[label](url)` in one text, the first URL is used.
 - With sync off, two tabs editing the *same* project at once will overwrite each other.
   With sync on, they merge.
 - Free Supabase projects pause after about a week without use; unpause from the dashboard.
