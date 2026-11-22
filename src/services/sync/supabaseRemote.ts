@@ -1,5 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
-import type { BinaryFileData } from "../../types/project";
+import type { BinaryFileData, ExcalidrawElement, PersistedAppState } from "../../types/project";
+import { defaultTab } from "../../lib/tabs";
 import type {
   RemoteProject,
   RemoteProjectSummary,
@@ -17,8 +18,10 @@ interface ProjectRow {
   name: string;
   created_at: number;
   updated_at: number;
-  elements: RemoteProject["elements"];
-  app_state: RemoteProject["appState"];
+  tabs: RemoteProject["tabs"] | null;
+  /** Pre-tabs rows kept a single canvas in these columns. */
+  elements: readonly ExcalidrawElement[] | null;
+  app_state: PersistedAppState | null;
   revision: number;
   deleted: boolean;
 }
@@ -29,8 +32,7 @@ function fromRow(row: ProjectRow): RemoteProject {
     name: row.name,
     createdAt: Number(row.created_at),
     updatedAt: Number(row.updated_at),
-    elements: row.elements ?? [],
-    appState: row.app_state ?? {},
+    tabs: row.tabs?.length ? row.tabs : [defaultTab(row.elements ?? [], row.app_state ?? {})],
     revision: Number(row.revision),
     deleted: row.deleted,
   };
@@ -42,8 +44,9 @@ function toRow(project: RemoteProjectWrite) {
     name: project.name,
     created_at: project.createdAt,
     updated_at: project.updatedAt,
-    elements: project.elements,
-    app_state: project.appState,
+    tabs: project.tabs,
+    elements: [],
+    app_state: {},
   };
 }
 
@@ -102,7 +105,7 @@ export class SupabaseRemote implements RemoteStore {
   async markDeleted(id: string) {
     const { error } = await this.client
       .from(TABLE)
-      .update({ deleted: true, elements: [], app_state: {} })
+      .update({ deleted: true, tabs: [], elements: [], app_state: {} })
       .eq("id", id);
     if (error) throw error;
   }

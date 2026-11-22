@@ -21,9 +21,11 @@ import type {
   Project,
   ProjectMeta,
   ProjectScene,
+  ProjectTab,
   ProjectThumbnail,
 } from "../types/project";
 import { DEVICE_ONLY_APP_STATE_KEYS } from "../types/project";
+import { defaultTab } from "../lib/tabs";
 
 export interface StoredFile extends BinaryFileData {
   projectId: string;
@@ -42,9 +44,16 @@ export interface IncomingProject {
   name: string;
   createdAt: number;
   updatedAt: number;
+  tabs: ProjectTab[];
+  revision: number;
+}
+
+/** What autosave writes: one tab's canvas. */
+export interface TabSave {
+  projectId: string;
+  tabId: string;
   elements: readonly ExcalidrawElement[];
   appState: PersistedAppState;
-  revision: number;
 }
 
 export interface ProjectStorage {
@@ -54,14 +63,16 @@ export interface ProjectStorage {
   /** Writes metadata, scene and files atomically. */
   createProject(project: Omit<Project, keyof SyncFields>): Promise<void>;
   /**
-   * Persists the latest scene plus any files not yet stored, atomically.
+   * Persists one tab's latest canvas plus any files not yet stored, atomically.
    * If `touch` is set, this is a content change: bumps `updatedAt` and `localVersion`.
    */
-  saveScene(
-    scene: ProjectScene,
-    newFiles: readonly BinaryFileData[],
-    touch: number | null,
-  ): Promise<void>;
+  saveTab(save: TabSave, newFiles: readonly BinaryFileData[], touch: number | null): Promise<void>;
+  /** Changes the tab list (add/rename/reorder/delete) atomically; a content change. */
+  updateTabs(
+    projectId: string,
+    update: (tabs: ProjectTab[]) => ProjectTab[],
+    at: number,
+  ): Promise<ProjectTab[]>;
   renameProject(id: string, name: string, at: number): Promise<ProjectMeta | undefined>;
   /** Deletes a project. With `tombstone`, records the delete so it syncs to the cloud. */
   deleteProject(id: string, options?: { tombstone?: boolean }): Promise<void>;
@@ -97,7 +108,7 @@ type SyncFields = Pick<ProjectMeta, "localVersion" | "syncedVersion" | "remoteRe
 
 interface MindboardDB extends DBSchema {
   projects: { key: string; value: ProjectMeta };
-  scenes: { key: string; value: ProjectScene };
+  scenes: { key: string; value: StoredScene };
   files: {
     key: [string, string];
     value: StoredFile;
@@ -179,8 +190,7 @@ class IndexedDBProjectStorage implements ProjectStorage {
     if (!meta) return undefined;
     return {
       ...normalizeMeta(meta),
-      elements: scene?.elements ?? [],
-      appState: scene?.appState ?? {},
+      tabs: sceneTabs(scene),
       files: toBinaryFiles(files),
     };
   }
@@ -188,7 +198,7 @@ class IndexedDBProjectStorage implements ProjectStorage {
   async createProject(project: Omit<Project, keyof SyncFields>) {
     const db = await this.db();
     const tx = db.transaction(["projects", "scenes", "files"], "readwrite");
-    const { elements, appState, files, ...meta } = project;
+    const { tabs, files, ...meta } = project;
     await Promise.all([
       tx.objectStore("projects").put({
         ...meta,
@@ -198,8 +208,7 @@ class IndexedDBProjectStorage implements ProjectStorage {
       }),
       tx.objectStore("scenes").put({
         projectId: project.id,
-        elements,
-        appState,
+        tabs: tabs.length ? tabs : [defaultTab()],
         savedAt: project.updatedAt,
       }),
       ...Object.values(files).map((file) =>
@@ -209,28 +218,52 @@ class IndexedDBProjectStorage implements ProjectStorage {
     ]);
   }
 
-  async saveScene(scene: ProjectScene, newFiles: readonly BinaryFileData[], touch: number | null) {
+  async saveTab(save: TabSave, newFiles: readonly BinaryFileData[], touch: number | null) {
     const db = await this.db();
     const tx = db.transaction(["projects", "scenes", "files"], "readwrite");
     const projects = tx.objectStore("projects");
-    const raw = await projects.get(scene.projectId);
-    if (!raw) {
-      // Project was deleted (e.g. from another tab or device) — don't resurrect it.
+    const raw = await projects.get(save.projectId);
+    const scene = await tx.objectStore("scenes").get(save.projectId);
+    const tabs = sceneTabs(scene);
+    const index = tabs.findIndex((t) => t.id === save.tabId);
+    if (!raw || index === -1 || tabs[index].deleted) {
+      // Project or tab was deleted (e.g. from another tab or device) — don't resurrect it.
       tx.abort();
       await tx.done.catch(() => {});
-      throw new ProjectNotFoundError(scene.projectId);
+      throw new ProjectNotFoundError(save.projectId);
     }
+    tabs[index] = { ...tabs[index], elements: save.elements, appState: save.appState };
     const meta = normalizeMeta(raw);
     await Promise.all([
-      tx.objectStore("scenes").put(scene),
+      tx.objectStore("scenes").put({ projectId: save.projectId, tabs, savedAt: Date.now() }),
       ...newFiles.map((file) =>
-        tx.objectStore("files").put({ ...file, projectId: scene.projectId, uploaded: false }),
+        tx.objectStore("files").put({ ...file, projectId: save.projectId, uploaded: false }),
       ),
       touch !== null
         ? projects.put({ ...meta, updatedAt: touch, localVersion: meta.localVersion + 1 })
         : null,
       tx.done,
     ]);
+  }
+
+  async updateTabs(projectId: string, update: (tabs: ProjectTab[]) => ProjectTab[], at: number) {
+    const db = await this.db();
+    const tx = db.transaction(["projects", "scenes"], "readwrite");
+    const raw = await tx.objectStore("projects").get(projectId);
+    if (!raw) {
+      tx.abort();
+      await tx.done.catch(() => {});
+      throw new ProjectNotFoundError(projectId);
+    }
+    const scene = await tx.objectStore("scenes").get(projectId);
+    const tabs = update(sceneTabs(scene));
+    const meta = normalizeMeta(raw);
+    await Promise.all([
+      tx.objectStore("scenes").put({ projectId, tabs, savedAt: Date.now() }),
+      tx.objectStore("projects").put({ ...meta, updatedAt: at, localVersion: meta.localVersion + 1 }),
+      tx.done,
+    ]);
+    return tabs;
   }
 
   async renameProject(id: string, name: string, at: number) {
@@ -328,13 +361,17 @@ class IndexedDBProjectStorage implements ProjectStorage {
       return false;
     }
     const scene = await tx.objectStore("scenes").get(incoming.id);
-    // Keep this device's own viewport; take everything else from the cloud.
-    const appState: Record<string, unknown> = { ...incoming.appState };
-    for (const key of DEVICE_ONLY_APP_STATE_KEYS) {
-      const local = scene?.appState?.[key];
-      if (local !== undefined) appState[key] = local;
-      else delete appState[key];
-    }
+    const localTabs = new Map(sceneTabs(scene).map((t) => [t.id, t]));
+    // Keep this device's own viewport per tab; take everything else from the cloud.
+    const tabs = incoming.tabs.map((tab) => {
+      const appState: Record<string, unknown> = { ...tab.appState };
+      const local = localTabs.get(tab.id)?.appState as Record<string, unknown> | undefined;
+      for (const key of DEVICE_ONLY_APP_STATE_KEYS) {
+        if (local?.[key] !== undefined) appState[key] = local[key];
+        else delete appState[key];
+      }
+      return { ...tab, appState: appState as PersistedAppState };
+    });
     const localVersion = meta ? (dirty ? meta.localVersion + 1 : meta.localVersion) : 1;
     await Promise.all([
       tx.objectStore("projects").put({
@@ -346,12 +383,7 @@ class IndexedDBProjectStorage implements ProjectStorage {
         syncedVersion: dirty ? (meta?.syncedVersion ?? 0) : localVersion,
         remoteRevision: incoming.revision,
       }),
-      tx.objectStore("scenes").put({
-        projectId: incoming.id,
-        elements: incoming.elements,
-        appState: appState as PersistedAppState,
-        savedAt: Date.now(),
-      }),
+      tx.objectStore("scenes").put({ projectId: incoming.id, tabs, savedAt: Date.now() }),
       tx.done,
     ]);
     return true;
@@ -414,6 +446,17 @@ export class ProjectNotFoundError extends Error {
     super(`Project ${id} no longer exists`);
     this.name = "ProjectNotFoundError";
   }
+}
+
+/** Scenes saved before tabs existed hold `elements`/`appState` directly; read them as one tab. */
+type StoredScene = ProjectScene & {
+  elements?: readonly ExcalidrawElement[];
+  appState?: PersistedAppState;
+};
+
+function sceneTabs(scene: StoredScene | undefined): ProjectTab[] {
+  if (scene?.tabs?.length) return scene.tabs.map((t) => ({ ...t }));
+  return [defaultTab(scene?.elements ?? [], scene?.appState ?? {})];
 }
 
 function toBinaryFiles(files: StoredFile[]): BinaryFiles {

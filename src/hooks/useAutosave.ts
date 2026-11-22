@@ -51,7 +51,8 @@ interface AutosaveState {
   projectGone: boolean;
 }
 
-export function useAutosave(projectId: string, initialFiles: BinaryFiles) {
+/** Autosave for the canvas of one tab (`tabId`) of a project. */
+export function useAutosave(projectId: string, tabId: string, initialFiles: BinaryFiles) {
   const [status, setStatus] = useState<SaveStatus>("idle");
   const [error, setError] = useState<string | null>(null);
   const [lastSavedAt, setLastSavedAt] = useState<number | null>(null);
@@ -90,9 +91,8 @@ export function useAutosave(projectId: string, initialFiles: BinaryFiles) {
       s.thumbnailRunning = true;
       s.thumbnailDirty = false;
       s.lastThumbnailAt = Date.now();
-      const { elements, appState, files } = s.latest;
       try {
-        await updateThumbnail(projectId, elements, appState, files);
+        await updateThumbnail(projectId);
       } catch (err) {
         console.warn("Thumbnail generation failed", err);
         s.thumbnailDirty = true;
@@ -134,13 +134,8 @@ export function useAutosave(projectId: string, initialFiles: BinaryFiles) {
           (file) => !s.savedFileIds.has(file.id),
         );
         try {
-          await projectStorage.saveScene(
-            {
-              projectId,
-              elements: snapshot.elements,
-              appState: snapshot.appState,
-              savedAt: Date.now(),
-            },
+          await projectStorage.saveTab(
+            { projectId, tabId, elements: snapshot.elements, appState: snapshot.appState },
             newFiles,
             touch,
           );
@@ -159,7 +154,7 @@ export function useAutosave(projectId: string, initialFiles: BinaryFiles) {
     const promise = run()
       .then(() => {
         // Everything is in IndexedDB now; an emergency copy would be stale.
-        if (!s.dirty) clearUnloadBackup(projectId);
+        if (!s.dirty) clearUnloadBackup(projectId, tabId);
         s.retryCount = 0;
         safeSet(setError, null);
         safeSet(setStatus, "saved");
@@ -198,7 +193,7 @@ export function useAutosave(projectId: string, initialFiles: BinaryFiles) {
 
     s.saving = promise;
     return promise;
-  }, [projectId, refreshThumbnail, safeSet]);
+  }, [projectId, tabId, refreshThumbnail, safeSet]);
 
   useEffect(() => {
     flushRef.current = flush;
@@ -252,7 +247,7 @@ export function useAutosave(projectId: string, initialFiles: BinaryFiles) {
     const backupPending = () => {
       const s = ref.current;
       if ((s.dirty || s.saving) && s.latest && !s.projectGone) {
-        writeUnloadBackup(projectId, {
+        writeUnloadBackup(projectId, tabId, {
           elements: s.latest.elements,
           appState: s.latest.appState,
           contentChanged: s.contentDirty || !!s.saving,
@@ -286,7 +281,7 @@ export function useAutosave(projectId: string, initialFiles: BinaryFiles) {
       window.removeEventListener("pagehide", onPageHide);
       window.removeEventListener("beforeunload", onBeforeUnload);
     };
-  }, [flush, refreshThumbnail, projectId]);
+  }, [flush, refreshThumbnail, projectId, tabId]);
 
   // Flush on unmount (navigating back, switching projects).
   useEffect(() => {

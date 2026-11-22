@@ -11,26 +11,35 @@
  *      optimistic concurrency (only succeeds if the cloud is still at the
  *      revision we last saw; otherwise pull+merge and retry)
  *
- * Merging uses Excalidraw's own per-element reconciliation (newer element
- * version wins; deletes are tombstones with a higher version), so edits to
- * different shapes on two devices both survive.
+ * Merging is per tab (see mergeTabs) and, within a tab, uses Excalidraw's own
+ * per-element reconciliation (newer element version wins; deletes are
+ * tombstones with a higher version), so edits to different shapes or tabs on
+ * two devices both survive.
  */
-import type { BinaryFileData, ExcalidrawElement, PersistedAppState } from "../../types/project";
+import type {
+  BinaryFileData,
+  ExcalidrawElement,
+  PersistedAppState,
+  ProjectTab,
+} from "../../types/project";
 import { DEVICE_ONLY_APP_STATE_KEYS } from "../../types/project";
 import { isDirty, type IncomingProject, type ProjectStorage } from "../projectStorage";
 import type { RemoteProject, RemoteProjectWrite, RemoteStore } from "./remote";
+import { mergeTabs, tabsSignature, type MergeElements } from "./mergeTabs";
 
-export type MergeElements = (
-  local: readonly ExcalidrawElement[],
-  remote: readonly ExcalidrawElement[],
-) => readonly ExcalidrawElement[] | Promise<readonly ExcalidrawElement[]>;
+export type { MergeElements } from "./mergeTabs";
+export { sceneSignature } from "./mergeTabs";
 
 /** An editor that currently has a project open and must take part in merges. */
 export interface ActiveEditorHandle {
   /** Persist any pending local edits. */
   flush(): Promise<void>;
-  /** Merge cloud elements into the live editor and return the merged scene. */
-  mergeRemote(remote: readonly ExcalidrawElement[], files: BinaryFileData[]): readonly ExcalidrawElement[];
+  /**
+   * Bring merged tabs into the live editor: merge the open tab with the live
+   * canvas (picking up edits made since the flush) and update the tab list.
+   * Returns the tabs with the open tab's canvas replaced by the live result.
+   */
+  mergeRemote(tabs: ProjectTab[], files: BinaryFileData[]): ProjectTab[];
   /** The cloud copy was renamed. */
   onRemoteRename(name: string): void;
   /** The project was deleted on another device. */
@@ -48,24 +57,23 @@ export interface SyncEngineDeps {
 
 const MAX_PUSH_ATTEMPTS = 3;
 
-/** Identity of a scene's content: element ids with their versions. */
-export function sceneSignature(elements: readonly ExcalidrawElement[]) {
-  return elements
-    .map((el) => `${el.id}:${el.version}:${el.versionNonce}`)
-    .sort()
-    .join("|");
-}
-
 function cloudAppState(appState: PersistedAppState): PersistedAppState {
   const copy: Record<string, unknown> = { ...appState };
   for (const key of DEVICE_ONLY_APP_STATE_KEYS) delete copy[key];
   return copy as PersistedAppState;
 }
 
-function referencedFileIds(elements: readonly ExcalidrawElement[]) {
+/** Tabs as sent to the cloud: without this device's scroll/zoom. */
+function cloudTabs(tabs: readonly ProjectTab[]): ProjectTab[] {
+  return tabs.map((tab) => ({ ...tab, appState: cloudAppState(tab.appState) }));
+}
+
+function referencedFileIds(tabs: readonly ProjectTab[]) {
   const ids = new Set<string>();
-  for (const el of elements) {
-    if (el.type === "image" && !el.isDeleted && el.fileId) ids.add(el.fileId);
+  for (const tab of tabs) {
+    for (const el of tab.elements as readonly ExcalidrawElement[]) {
+      if (el.type === "image" && !el.isDeleted && el.fileId) ids.add(el.fileId);
+    }
   }
   return ids;
 }
@@ -131,11 +139,11 @@ export class SyncEngine {
   }
 
   /** Downloads images the scene references that this device doesn't have yet. */
-  private async fetchMissingFiles(projectId: string, elements: readonly ExcalidrawElement[]) {
+  private async fetchMissingFiles(projectId: string, tabs: readonly ProjectTab[]) {
     const { storage, remote } = this.deps;
     const have = await storage.getFileIds(projectId);
     const files: BinaryFileData[] = [];
-    for (const fileId of referencedFileIds(elements)) {
+    for (const fileId of referencedFileIds(tabs)) {
       if (have.has(fileId)) continue;
       const file = await remote.downloadFile(projectId, fileId);
       if (file) files.push(file);
@@ -151,7 +159,7 @@ export class SyncEngine {
       return;
     }
 
-    const files = await this.fetchMissingFiles(project.id, project.elements);
+    const files = await this.fetchMissingFiles(project.id, project.tabs);
     const active = getActiveEditor?.(project.id);
     if (active) await active.flush();
 
@@ -163,25 +171,22 @@ export class SyncEngine {
     const name =
       local && localDirty && local.updatedAt > project.updatedAt ? local.name : project.name;
 
-    let elements: readonly ExcalidrawElement[];
-    if (active) {
-      elements = active.mergeRemote(project.elements, files);
-    } else if (local && localDirty) {
-      elements = await merge(local.elements, project.elements);
+    let tabs: ProjectTab[];
+    if (local && (localDirty || active)) {
+      tabs = await mergeTabs(local.tabs, project.tabs, merge);
     } else {
-      elements = project.elements;
+      tabs = project.tabs;
     }
+    if (active) tabs = active.mergeRemote(tabs, files);
 
-    const dirty =
-      sceneSignature(elements) !== sceneSignature(project.elements) || name !== project.name;
+    const dirty = tabsSignature(tabs) !== tabsSignature(project.tabs) || name !== project.name;
 
     const incoming: IncomingProject = {
       id: project.id,
       name,
       createdAt: project.createdAt,
       updatedAt: dirty ? Math.max(project.updatedAt, local?.updatedAt ?? 0) : project.updatedAt,
-      elements,
-      appState: project.appState,
+      tabs,
       revision: project.revision,
     };
 
@@ -219,8 +224,7 @@ export class SyncEngine {
         name: project.name,
         createdAt: project.createdAt,
         updatedAt: project.updatedAt,
-        elements: project.elements,
-        appState: cloudAppState(project.appState),
+        tabs: cloudTabs(project.tabs),
       };
 
       const result =

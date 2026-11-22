@@ -15,28 +15,37 @@ export interface UnloadBackup {
   writtenAt: number;
 }
 
-const key = (projectId: string) => `mindboard:unsaved:${projectId}`;
+const PREFIX = "mindboard:unsaved:";
+const key = (projectId: string, tabId: string) => `${PREFIX}${projectId}:${tabId}`;
 
-export function writeUnloadBackup(projectId: string, backup: UnloadBackup) {
+export function writeUnloadBackup(projectId: string, tabId: string, backup: UnloadBackup) {
   try {
-    localStorage.setItem(key(projectId), JSON.stringify(backup));
+    localStorage.setItem(key(projectId, tabId), JSON.stringify(backup));
   } catch {
     // Quota exceeded or storage unavailable; the async save may still complete.
   }
 }
 
-export function readUnloadBackup(projectId: string): UnloadBackup | null {
+/** All emergency copies for a project, keyed by tab id. */
+export function readUnloadBackups(projectId: string): Map<string, UnloadBackup> {
+  const result = new Map<string, UnloadBackup>();
   try {
-    const raw = localStorage.getItem(key(projectId));
-    return raw ? (JSON.parse(raw) as UnloadBackup) : null;
+    const prefix = `${PREFIX}${projectId}:`;
+    for (let i = 0; i < localStorage.length; i++) {
+      const k = localStorage.key(i);
+      if (!k?.startsWith(prefix)) continue;
+      const raw = localStorage.getItem(k);
+      if (raw) result.set(k.slice(prefix.length), JSON.parse(raw) as UnloadBackup);
+    }
   } catch {
-    return null;
+    /* ignore */
   }
+  return result;
 }
 
-export function clearUnloadBackup(projectId: string) {
+export function clearUnloadBackup(projectId: string, tabId: string) {
   try {
-    localStorage.removeItem(key(projectId));
+    localStorage.removeItem(key(projectId, tabId));
   } catch {
     /* ignore */
   }

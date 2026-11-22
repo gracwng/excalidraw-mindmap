@@ -3,7 +3,9 @@ import { beforeEach, describe, expect, it } from "vitest";
 import { createProjectStorage, isDirty, type ProjectStorage } from "../projectStorage";
 import { MemoryRemote } from "./memoryRemote";
 import { SyncEngine, type MergeElements } from "./syncEngine";
-import type { BinaryFileData, ExcalidrawElement } from "../../types/project";
+import type { BinaryFileData, ExcalidrawElement, ProjectTab } from "../../types/project";
+import { DEFAULT_TAB_ID } from "../../types/project";
+import { bumpTab, createTab, defaultTab, deleteTab, visibleTabs } from "../../lib/tabs";
 
 /**
  * Same rule as Excalidraw's reconcileElements (which needs a browser to import):
@@ -57,21 +59,36 @@ function device(remote: MemoryRemote) {
 
 async function create(storage: ProjectStorage, id: string, elements: ExcalidrawElement[], name = id) {
   const now = Date.now();
-  await storage.createProject({ id, name, createdAt: now, updatedAt: now, elements, appState: {}, files: {} });
+  await storage.createProject({
+    id,
+    name,
+    createdAt: now,
+    updatedAt: now,
+    tabs: [defaultTab(elements)],
+    files: {},
+  });
 }
 
-async function edit(storage: ProjectStorage, id: string, elements: readonly ExcalidrawElement[]) {
+async function edit(
+  storage: ProjectStorage,
+  id: string,
+  elements: readonly ExcalidrawElement[],
+  tabId = DEFAULT_TAB_ID,
+) {
   const project = await storage.loadProject(id);
-  await storage.saveScene(
-    { projectId: id, elements, appState: project!.appState, savedAt: Date.now() },
-    [],
-    Date.now(),
-  );
+  const tab = project!.tabs.find((t) => t.id === tabId)!;
+  await storage.saveTab({ projectId: id, tabId, elements, appState: tab.appState }, [], Date.now());
 }
 
-async function elementsOf(storage: ProjectStorage, id: string) {
-  return (await storage.loadProject(id))?.elements ?? null;
+const tabOf = (tabs: readonly ProjectTab[] | undefined, tabId = DEFAULT_TAB_ID) =>
+  tabs?.find((t) => t.id === tabId);
+
+async function elementsOf(storage: ProjectStorage, id: string, tabId = DEFAULT_TAB_ID) {
+  return tabOf((await storage.loadProject(id))?.tabs, tabId)?.elements ?? null;
 }
+
+const remoteElements = (remote: MemoryRemote, id: string, tabId = DEFAULT_TAB_ID) =>
+  tabOf(remote.projects.get(id)?.tabs, tabId)?.elements ?? null;
 const liveIds = (els: readonly ExcalidrawElement[] | null) =>
   (els ?? []).filter((e) => !e.isDeleted).map((e) => e.id).sort();
 
@@ -95,7 +112,7 @@ describe("SyncEngine", () => {
     await ipad.engine.syncOnce();
     const onIpad = await ipad.storage.loadProject("p1");
     expect(onIpad?.name).toBe("Ideas");
-    expect(liveIds(onIpad!.elements)).toEqual(["a"]);
+    expect(liveIds(tabOf(onIpad!.tabs)!.elements)).toEqual(["a"]);
     expect(isDirty(onIpad!)).toBe(false);
   });
 
@@ -112,8 +129,9 @@ describe("SyncEngine", () => {
 
     const onLaptop = await laptop.storage.loadProject("p1");
     expect(onLaptop?.name).toBe("Renamed on iPad");
-    expect(liveIds(onLaptop!.elements)).toEqual(["a", "b"]);
-    expect(onLaptop!.elements.find((e) => e.id === "a")?.x).toBe(50);
+    const els = tabOf(onLaptop!.tabs)!.elements;
+    expect(liveIds(els)).toEqual(["a", "b"]);
+    expect(els.find((e) => e.id === "a")?.x).toBe(50);
   });
 
   it("merges concurrent edits to different shapes on two devices", async () => {
@@ -137,7 +155,7 @@ describe("SyncEngine", () => {
       expect(els!.find((e) => e.id === "a")?.x).toBe(100);
       expect(els!.find((e) => e.id === "b")?.y).toBe(200);
     }
-    expect(liveIds(remote.projects.get("p1")!.elements)).toEqual(["a", "b", "fromIpad", "fromLaptop"]);
+    expect(liveIds(remoteElements(remote, "p1"))).toEqual(["a", "b", "fromIpad", "fromLaptop"]);
   });
 
   it("deleting a shape on one device removes it everywhere, even after concurrent edits", async () => {
@@ -200,8 +218,7 @@ describe("SyncEngine", () => {
       name: "With image",
       createdAt: now,
       updatedAt: now,
-      elements: [image],
-      appState: {},
+      tabs: [defaultTab([image])],
       files: { img1: file },
     });
     await laptop.engine.syncOnce();
@@ -220,17 +237,22 @@ describe("SyncEngine", () => {
       name: "View",
       createdAt: now,
       updatedAt: now,
-      elements: [rect("a")],
-      appState: { scrollX: 500, zoom: { value: 2 } as never, viewBackgroundColor: "#ffc9c9" },
+      tabs: [
+        defaultTab([rect("a")], {
+          scrollX: 500,
+          zoom: { value: 2 } as never,
+          viewBackgroundColor: "#ffc9c9",
+        }),
+      ],
       files: {},
     });
     await laptop.engine.syncOnce();
-    expect(remote.projects.get("p1")!.appState.scrollX).toBeUndefined();
+    expect(tabOf(remote.projects.get("p1")!.tabs)!.appState.scrollX).toBeUndefined();
 
     await ipad.engine.syncOnce();
     const onIpad = await ipad.storage.loadProject("p1");
-    expect(onIpad!.appState.viewBackgroundColor).toBe("#ffc9c9");
-    expect(onIpad!.appState.scrollX).toBeUndefined();
+    expect(tabOf(onIpad!.tabs)!.appState.viewBackgroundColor).toBe("#ffc9c9");
+    expect(tabOf(onIpad!.tabs)!.appState.scrollX).toBeUndefined();
   });
 
   it("works offline and catches up later", async () => {
@@ -283,7 +305,11 @@ describe("SyncEngine", () => {
         id === "p1"
           ? {
               flush: async () => {},
-              mergeRemote: (remoteEls) => (live = mergeSync(live, remoteEls)),
+              mergeRemote: (tabs) => {
+                const tab = tabOf(tabs)!;
+                live = mergeSync(live, tab.elements);
+                return tabs.map((t) => (t === tab ? { ...t, elements: live } : t));
+              },
               onRemoteRename: (name) => (renamed = name),
             }
           : undefined,
@@ -297,6 +323,119 @@ describe("SyncEngine", () => {
     expect(liveIds(live)).toEqual(["a", "fromLaptop", "typing"]);
     expect(renamed).toBe("New name");
     // The merged scene (with the iPad's unsaved shape) went back to the cloud.
-    expect(liveIds(remote.projects.get("p1")!.elements)).toEqual(["a", "fromLaptop", "typing"]);
+    expect(liveIds(remoteElements(remote, "p1"))).toEqual(["a", "fromLaptop", "typing"]);
+  });
+
+  describe("tabs", () => {
+    const tabNames = async (storage: ProjectStorage, id: string) =>
+      visibleTabs((await storage.loadProject(id))!.tabs).map((t) => t.name);
+
+    it("syncs added tabs and their content", async () => {
+      await create(laptop.storage, "p1", [rect("a")]);
+      const tab = createTab({ name: "Research", order: 1, elements: [rect("r1")] });
+      await laptop.storage.updateTabs("p1", (tabs) => [...tabs, tab], Date.now());
+      await laptop.engine.syncOnce();
+      await ipad.engine.syncOnce();
+
+      expect(await tabNames(ipad.storage, "p1")).toEqual(["Tab 1", "Research"]);
+      expect(liveIds(await elementsOf(ipad.storage, "p1", tab.id))).toEqual(["r1"]);
+    });
+
+    it("merges tabs added on two devices at the same time", async () => {
+      await create(laptop.storage, "p1", [rect("a")]);
+      await laptop.engine.syncOnce();
+      await ipad.engine.syncOnce();
+
+      const fromLaptop = createTab({ name: "Laptop tab", order: 1 });
+      const fromIpad = createTab({ name: "iPad tab", order: 2 });
+      await laptop.storage.updateTabs("p1", (t) => [...t, fromLaptop], Date.now());
+      await ipad.storage.updateTabs("p1", (t) => [...t, fromIpad], Date.now());
+      await laptop.engine.syncOnce();
+      await ipad.engine.syncOnce();
+      await laptop.engine.syncOnce();
+
+      for (const dev of [laptop, ipad]) {
+        expect(await tabNames(dev.storage, "p1")).toEqual(["Tab 1", "Laptop tab", "iPad tab"]);
+      }
+    });
+
+    it("merges edits to different tabs, and a rename with a content edit", async () => {
+      const second = createTab({ name: "Two", order: 1, elements: [rect("b")] });
+      const now = Date.now();
+      await laptop.storage.createProject({
+        id: "p1",
+        name: "p1",
+        createdAt: now,
+        updatedAt: now,
+        tabs: [defaultTab([rect("a")]), second],
+        files: {},
+      });
+      await laptop.engine.syncOnce();
+      await ipad.engine.syncOnce();
+
+      await edit(laptop.storage, "p1", [rect("a"), rect("laptop-in-1")]);
+      await laptop.storage.updateTabs(
+        "p1",
+        (tabs) => tabs.map((t) => (t.id === second.id ? bumpTab(t, { name: "Renamed" }) : t)),
+        Date.now(),
+      );
+      await edit(ipad.storage, "p1", [rect("b"), rect("ipad-in-2")], second.id);
+      await laptop.engine.syncOnce();
+      await ipad.engine.syncOnce();
+      await laptop.engine.syncOnce();
+
+      for (const dev of [laptop, ipad]) {
+        expect(await tabNames(dev.storage, "p1")).toEqual(["Tab 1", "Renamed"]);
+        expect(liveIds(await elementsOf(dev.storage, "p1"))).toContain("laptop-in-1");
+        expect(liveIds(await elementsOf(dev.storage, "p1", second.id))).toEqual(["b", "ipad-in-2"]);
+      }
+    });
+
+    it("deleting a tab wins over a stale copy that was edited elsewhere", async () => {
+      const second = createTab({ name: "Two", order: 1, elements: [rect("b")] });
+      const now = Date.now();
+      await laptop.storage.createProject({
+        id: "p1",
+        name: "p1",
+        createdAt: now,
+        updatedAt: now,
+        tabs: [defaultTab([rect("a")]), second],
+        files: {},
+      });
+      await laptop.engine.syncOnce();
+      await ipad.engine.syncOnce();
+
+      await laptop.storage.updateTabs(
+        "p1",
+        (tabs) => tabs.map((t) => (t.id === second.id ? deleteTab(t) : t)),
+        Date.now(),
+      );
+      await edit(ipad.storage, "p1", [rect("b"), rect("late")], second.id);
+      await laptop.engine.syncOnce();
+      await ipad.engine.syncOnce();
+      await laptop.engine.syncOnce();
+
+      for (const dev of [laptop, ipad]) {
+        expect(await tabNames(dev.storage, "p1")).toEqual(["Tab 1"]);
+      }
+    });
+
+    it("migrates projects saved before tabs existed into the same tab on every device", async () => {
+      // A row written by the pre-tabs app version, as Supabase would return it.
+      remote.projects.set("old", {
+        id: "old",
+        name: "Old",
+        createdAt: 1,
+        updatedAt: 1,
+        tabs: [defaultTab([rect("legacy")])],
+        revision: 3,
+        deleted: false,
+      });
+      await laptop.engine.syncOnce();
+      await ipad.engine.syncOnce();
+      expect(liveIds(await elementsOf(laptop.storage, "old"))).toEqual(["legacy"]);
+      expect(liveIds(await elementsOf(ipad.storage, "old"))).toEqual(["legacy"]);
+      expect(remote.writes).toBe(0);
+    });
   });
 });

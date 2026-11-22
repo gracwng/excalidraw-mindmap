@@ -2,11 +2,7 @@
  * The cloud side of sync, as an interface so the engine can be tested against
  * an in-memory fake and so the backend could be swapped later.
  */
-import type {
-  BinaryFileData,
-  ExcalidrawElement,
-  PersistedAppState,
-} from "../../types/project";
+import type { BinaryFileData, ProjectTab } from "../../types/project";
 
 export interface RemoteProjectSummary {
   id: string;
@@ -19,8 +15,8 @@ export interface RemoteProject {
   name: string;
   createdAt: number;
   updatedAt: number;
-  elements: readonly ExcalidrawElement[];
-  appState: PersistedAppState;
+  /** Tabs with their canvases; device-only view state (scroll/zoom) is never sent. */
+  tabs: ProjectTab[];
   revision: number;
   deleted: boolean;
 }

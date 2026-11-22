@@ -4,7 +4,14 @@
  * can never touch another.
  */
 import { projectStorage } from "./projectStorage";
-import type { ExcalidrawElement, PersistedAppState, Project, BinaryFiles } from "../types/project";
+import type {
+  BinaryFiles,
+  ExcalidrawElement,
+  PersistedAppState,
+  Project,
+  ProjectTab,
+} from "../types/project";
+import { defaultTab } from "../lib/tabs";
 import { PERSISTED_APP_STATE_KEYS } from "../types/project";
 import { notifyProjectsChanged } from "../lib/projectEvents";
 
@@ -32,6 +39,9 @@ export function pickPersistedAppState(appState: Record<string, unknown>): Persis
 export async function createProject(
   init: {
     name?: string;
+    /** Either full tabs (e.g. when duplicating)… */
+    tabs?: ProjectTab[];
+    /** …or one canvas, which becomes "Tab 1". */
     elements?: readonly ExcalidrawElement[];
     appState?: PersistedAppState;
     files?: BinaryFiles;
@@ -43,8 +53,7 @@ export async function createProject(
     name: init.name?.trim() || DEFAULT_PROJECT_NAME,
     createdAt: now,
     updatedAt: now,
-    elements: init.elements ?? [],
-    appState: init.appState ?? {},
+    tabs: init.tabs?.length ? init.tabs : [defaultTab(init.elements ?? [], init.appState ?? {})],
     files: init.files ?? {},
   };
   await projectStorage.createProject(base);
@@ -66,8 +75,7 @@ export async function duplicateProject(id: string) {
   // structuredClone guarantees the copy shares no references with the source.
   const copy = await createProject({
     name: `${source.name} (copy)`,
-    elements: structuredClone(source.elements),
-    appState: structuredClone(source.appState),
+    tabs: structuredClone(source.tabs.filter((t) => !t.deleted)),
     files: structuredClone(source.files),
   });
   const thumb = await projectStorage.getThumbnail(id);

@@ -11,11 +11,16 @@ def check(name, cond, detail=""):
 def server():
     return json.load(urllib.request.urlopen(SYNC + "/debug"))
 
+def live_elements(pr):
+    """Visible elements of a cloud project's first tab."""
+    tabs = sorted([t for t in pr.get("tabs", []) if not t.get("deleted")], key=lambda t: t["order"])
+    return [e for e in (tabs[0]["elements"] if tabs else []) if not e.get("isDeleted")]
+
 def live_count(page, pid):
     return page.evaluate("""async (id) => {
       const db = await new Promise((res) => { const r = indexedDB.open('mindboard'); r.onsuccess=()=>res(r.result); });
       const s = await new Promise((res) => { const r = db.transaction('scenes').objectStore('scenes').get(id); r.onsuccess=()=>res(r.result); });
-      db.close(); return s ? s.elements.filter(e => !e.isDeleted).length : -1; }""", pid)
+      db.close(); return s ? (s.tabs ? s.tabs.filter(t => !t.deleted).sort((a, b) => a.order - b.order)[0].elements : s.elements).filter(e => !e.isDeleted).length : -1; }""", pid)
 
 def wait_until(fn, timeout=15, interval=0.25):
     end = time.time() + timeout
@@ -50,7 +55,7 @@ with sync_playwright() as p:
     pid = laptop.url.split("/project/")[1]
     draw(laptop, "r", 500, 300, 700, 420)
     laptop.locator(".mb-name-button").click(); laptop.locator(".mb-name-input").fill("Shared map"); laptop.keyboard.press("Enter")
-    ok = wait_until(lambda: any(pr["id"] == pid and pr["name"] == "Shared map" and len(pr["elements"]) == 1 for pr in server()["projects"]))
+    ok = wait_until(lambda: any(pr["id"] == pid and pr["name"] == "Shared map" and len(live_elements(pr)) == 1 for pr in server()["projects"]))
     check("laptop project reaches cloud", ok)
     ok = wait_until(lambda: ipad.locator(".mb-card__title", has_text="Shared map").count() == 1)
     check("appears on iPad dashboard live", ok)
@@ -142,7 +147,7 @@ with sync_playwright() as p:
     laptop.wait_for_timeout(2500)
     check("offline edit not in cloud yet", not any(pr["id"] == pid2 for pr in server()["projects"]))
     ctx.set_offline(False)
-    ok = wait_until(lambda: any(pr["id"] == pid2 and len(pr["elements"]) == 1 for pr in server()["projects"]), 20)
+    ok = wait_until(lambda: any(pr["id"] == pid2 and len(live_elements(pr)) == 1 for pr in server()["projects"]), 20)
     check("offline edit uploads after reconnect", ok)
     laptop.screenshot(path=f"{OUT}/s4-laptop.png")
 

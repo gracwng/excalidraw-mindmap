@@ -2,6 +2,7 @@ import { loadExcalidraw } from "../lib/excalidraw";
 import { notifyProjectsChanged } from "../lib/projectEvents";
 import { projectStorage } from "./projectStorage";
 import type { BinaryFiles, ExcalidrawElement, PersistedAppState } from "../types/project";
+import { firstTab } from "../lib/tabs";
 
 const THUMBNAIL_MAX_SIZE = 480;
 
@@ -28,13 +29,12 @@ export async function renderThumbnail(
   });
 }
 
-export async function updateThumbnail(
-  projectId: string,
-  elements: readonly ExcalidrawElement[],
-  appState: PersistedAppState,
-  files: BinaryFiles,
-) {
-  const blob = await renderThumbnail(elements, appState, files);
+/** Regenerates a project's dashboard preview from its first tab, as stored. */
+export async function updateThumbnail(projectId: string) {
+  const project = await projectStorage.loadProject(projectId);
+  if (!project) return;
+  const tab = firstTab(project.tabs);
+  const blob = tab ? await renderThumbnail(tab.elements, tab.appState, project.files) : null;
   if (blob) {
     await projectStorage.saveThumbnail({ projectId, blob, updatedAt: Date.now() });
   } else {

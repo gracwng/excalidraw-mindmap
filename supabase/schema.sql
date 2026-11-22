@@ -11,13 +11,17 @@ create table if not exists public.projects (
   name        text    not null default 'Untitled mind map',
   created_at  bigint  not null,            -- ms since epoch (client clock)
   updated_at  bigint  not null,            -- ms since epoch (client clock)
-  elements    jsonb   not null default '[]'::jsonb,
-  app_state   jsonb   not null default '{}'::jsonb,
+  tabs        jsonb   not null default '[]'::jsonb, -- [{id, name, order, version, elements, appState, ...}]
+  elements    jsonb   not null default '[]'::jsonb, -- legacy (pre-tabs) single canvas
+  app_state   jsonb   not null default '{}'::jsonb, -- legacy (pre-tabs) single canvas
   revision    bigint  not null default 1,  -- bumped on every write; used for optimistic concurrency
   deleted     boolean not null default false,
   server_updated_at timestamptz not null default now(),
   primary key (user_id, id)
 );
+
+-- Added with tabs; harmless if the column already exists.
+alter table public.projects add column if not exists tabs jsonb not null default '[]'::jsonb;
 
 create or replace function public.mindboard_touch_server_updated_at()
 returns trigger language plpgsql as $$

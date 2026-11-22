@@ -6,7 +6,13 @@ import { loadExcalidraw } from "../lib/excalidraw";
 import { createProject, pickPersistedAppState } from "./projectService";
 import { projectStorage } from "./projectStorage";
 import { updateThumbnail } from "./thumbnailService";
-import type { Project } from "../types/project";
+import type {
+  BinaryFiles,
+  ExcalidrawElement,
+  PersistedAppState,
+  Project,
+} from "../types/project";
+import { visibleTabs } from "../lib/tabs";
 
 export type ExportFormat = "excalidraw" | "png" | "svg";
 
@@ -25,21 +31,27 @@ function downloadBlob(blob: Blob, fileName: string) {
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
-export async function exportProject(project: Project, format: ExportFormat) {
+/** One canvas to export: a tab of a project. */
+export interface ExportableCanvas {
+  fileName: string;
+  elements: readonly ExcalidrawElement[];
+  appState: PersistedAppState;
+  files: BinaryFiles;
+}
+
+async function exportCanvas(canvas: ExportableCanvas, format: ExportFormat) {
   const { serializeAsJSON, exportToBlob, exportToSvg, MIME_TYPES } = await loadExcalidraw();
-  const elements = project.elements.filter((el) => !el.isDeleted);
-  const base = safeFileName(project.name);
+  const elements = canvas.elements.filter((el) => !el.isDeleted);
+  const base = safeFileName(canvas.fileName);
 
   if (format === "excalidraw") {
-    const json = serializeAsJSON(elements, project.appState, project.files, "local");
+    const json = serializeAsJSON(elements, canvas.appState, canvas.files, "local");
     downloadBlob(new Blob([json], { type: MIME_TYPES.excalidraw }), `${base}.excalidraw`);
     return;
   }
 
-  if (elements.length === 0) throw new Error("This mindboard is empty — nothing to export.");
-
   const appState = {
-    viewBackgroundColor: project.appState.viewBackgroundColor ?? "#ffffff",
+    viewBackgroundColor: canvas.appState.viewBackgroundColor ?? "#ffffff",
     exportBackground: true,
     exportWithDarkMode: false,
     exportEmbedScene: false,
@@ -49,7 +61,7 @@ export async function exportProject(project: Project, format: ExportFormat) {
     const blob = await exportToBlob({
       elements,
       appState: { ...appState, exportScale: 2 },
-      files: project.files,
+      files: canvas.files,
       exportPadding: 16,
       mimeType: MIME_TYPES.png,
     });
@@ -58,12 +70,39 @@ export async function exportProject(project: Project, format: ExportFormat) {
     const svg = await exportToSvg({
       elements,
       appState,
-      files: project.files,
+      files: canvas.files,
       exportPadding: 16,
     });
-    downloadBlob(
-      new Blob([svg.outerHTML], { type: MIME_TYPES.svg }),
-      `${base}.svg`,
+    downloadBlob(new Blob([svg.outerHTML], { type: MIME_TYPES.svg }), `${base}.svg`);
+  }
+}
+
+/**
+ * Exports a project. With `tabId`, just that tab; otherwise every tab, one
+ * file each (a .excalidraw file holds a single canvas). Files are named
+ * "Project" for single-tab projects and "Project - Tab" otherwise.
+ */
+export async function exportProject(project: Project, format: ExportFormat, tabId?: string) {
+  const all = visibleTabs(project.tabs);
+  const tabs = tabId ? all.filter((t) => t.id === tabId) : all;
+  const exportable =
+    format === "excalidraw" ? tabs : tabs.filter((t) => t.elements.some((el) => !el.isDeleted));
+  if (exportable.length === 0) {
+    throw new Error(
+      tabId ? "This tab is empty — nothing to export." : "This mindboard is empty — nothing to export.",
+    );
+  }
+  for (const [i, tab] of exportable.entries()) {
+    // Browsers drop rapid back-to-back downloads; space them out.
+    if (i > 0) await new Promise((r) => setTimeout(r, 400));
+    await exportCanvas(
+      {
+        fileName: all.length > 1 ? `${project.name} - ${tab.name}` : project.name,
+        elements: tab.elements,
+        appState: tab.appState,
+        files: project.files,
+      },
+      format,
     );
   }
 }
@@ -90,6 +129,6 @@ export async function importProjectFile(file: File): Promise<Project> {
   const appState = pickPersistedAppState(scene.appState as unknown as Record<string, unknown>);
   const project = await createProject({ name, elements, appState, files: scene.files ?? {} });
   // Fire-and-forget; a thumbnail failure shouldn't fail the import.
-  updateThumbnail(project.id, elements, appState, project.files).catch(console.error);
+  updateThumbnail(project.id).catch(console.error);
   return project;
 }

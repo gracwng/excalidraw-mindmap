@@ -54,18 +54,40 @@ export interface ProjectMeta {
 /** Appstate keys that describe *this device's* view and are never synced. */
 export const DEVICE_ONLY_APP_STATE_KEYS = ["scrollX", "scrollY", "zoom"] as const;
 
+/**
+ * Tab metadata. `version`/`versionNonce` work like Excalidraw's element
+ * versions: when two devices change the same tab's name/order/deleted flag,
+ * the higher version wins. Deleted tabs are kept as tombstones so the delete
+ * reaches other devices.
+ */
+export interface TabMeta {
+  id: string;
+  name: string;
+  order: number;
+  version: number;
+  versionNonce: number;
+  deleted?: boolean;
+}
+
+/** One canvas within a project. */
+export interface ProjectTab extends TabMeta {
+  elements: readonly ExcalidrawElement[];
+  appState: PersistedAppState;
+}
+
+/** Id of the first tab. Fixed so that projects from before tabs existed migrate identically on every device. */
+export const DEFAULT_TAB_ID = "default";
+
 /** The drawing itself, stored separately from metadata so the dashboard stays fast. */
 export interface ProjectScene {
   projectId: string;
-  elements: readonly ExcalidrawElement[];
-  appState: PersistedAppState;
+  tabs: ProjectTab[];
   savedAt: number;
 }
 
-/** A complete project: metadata + scene + binary files (images). */
+/** A complete project: metadata + tabs + binary files (images, shared by all tabs). */
 export interface Project extends ProjectMeta {
-  elements: readonly ExcalidrawElement[];
-  appState: PersistedAppState;
+  tabs: ProjectTab[];
   files: BinaryFiles;
 }
 

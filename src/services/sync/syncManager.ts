@@ -260,16 +260,14 @@ class SyncManager {
 }
 
 async function refreshThumbnail(projectId: string) {
-  const project = await projectStorage.loadProject(projectId);
-  if (project) {
-    await updateThumbnail(projectId, project.elements, project.appState, project.files).catch(
-      (err) => console.warn("Thumbnail update failed", err),
-    );
-  }
+  await updateThumbnail(projectId).catch((err) => console.warn("Thumbnail update failed", err));
 }
 
 function describeError(err: unknown) {
   const message = err instanceof Error ? err.message : String(err);
+  if (/column .*tabs|'tabs' column/i.test(message)) {
+    return "The cloud database needs updating for tabs (re-run supabase/schema.sql).";
+  }
   if (/relation .*projects.* does not exist|Could not find the table/i.test(message)) {
     return "The cloud database isn't set up yet (run supabase/schema.sql).";
   }

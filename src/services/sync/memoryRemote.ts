@@ -55,7 +55,7 @@ export class MemoryRemote implements RemoteStore {
     this.check();
     const current = this.projects.get(id);
     if (current) {
-      this.projects.set(id, { ...current, deleted: true, elements: [], appState: {} });
+      this.projects.set(id, { ...current, deleted: true, tabs: [] });
       this.notify();
     }
   }
