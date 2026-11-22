@@ -326,9 +326,14 @@ select {
   display: inline-flex;
 }
 .mb-menu__content {
-  position: absolute;
-  top: calc(100% + 4px);
-  z-index: 20;
+  /* Rendered in a portal; top/left/right come from the trigger's position. */
+  position: fixed;
+  z-index: 1000;
+  max-height: calc(100dvh - 5rem);
+  overflow-y: auto;
+  font-family: var(--mb-font);
+  font-size: 0.875rem;
+  color: var(--mb-text);
   min-width: 13rem;
   padding: 0.5rem;
   border-radius: var(--mb-radius);
@@ -339,12 +344,6 @@ select {
   flex-direction: column;
   gap: 1px;
   animation: mb-pop 0.1s ease-out;
-}
-.mb-menu__content--end {
-  right: 0;
-}
-.mb-menu__content--start {
-  left: 0;
 }
 .mb-menu__item {
   display: flex;
@@ -363,6 +362,22 @@ select {
 .mb-menu__item:hover,
 .mb-menu__item:focus-visible {
   background: var(--mb-surface-high);
+}
+.mb-menu__item:disabled {
+  cursor: default;
+  opacity: 0.5;
+  background: none;
+}
+.mb-menu__hint {
+  display: block;
+  font-size: 0.75rem;
+  color: var(--mb-text-muted);
+  margin-top: 0.125rem;
+}
+.mb-menu__item:has(.mb-menu__hint) {
+  height: auto;
+  padding-top: 0.375rem;
+  padding-bottom: 0.375rem;
 }
 .mb-menu__item--danger {
   color: var(--mb-danger-strong);
@@ -805,6 +820,27 @@ select {
 .mb-tab__label:focus-visible {
   outline: 2px solid var(--mb-primary);
   outline-offset: -2px;
+}
+/* Every tab has options: always shown on the open tab, on hover for the others. */
+.mb-tab:not(.mb-tab--active):not(.mb-tab--menu-open):not(:hover) .mb-tab__menu > .mb-icon-button {
+  opacity: 0;
+  width: 0;
+  margin-right: 0;
+  overflow: hidden;
+}
+.mb-tab:not(.mb-tab--active) .mb-tab__label {
+  padding-right: 0.125rem;
+}
+.mb-tab:not(.mb-tab--active):not(.mb-tab--menu-open):not(:hover) .mb-tab__label {
+  padding-right: 0.75rem;
+}
+@media (hover: none) {
+  /* Touch screens can't hover: show the menu button on every tab. */
+  .mb-tab .mb-tab__menu > .mb-icon-button {
+    opacity: 1 !important;
+    width: 1.5rem !important;
+    margin-right: 0.25rem !important;
+  }
 }
 .mb-tab__menu > .mb-icon-button {
   width: 1.5rem;

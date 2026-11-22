@@ -18,6 +18,7 @@ interface TabStripProps {
 export function TabStrip(props: TabStripProps) {
   const { tabs, activeTabId } = props;
   const [renamingId, setRenamingId] = useState<string | null>(null);
+  const [menuFor, setMenuFor] = useState<string | null>(null);
   const [draft, setDraft] = useState("");
   const inputRef = useRef<HTMLInputElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
@@ -70,7 +71,15 @@ export function TabStrip(props: TabStripProps) {
             );
           }
           return (
-            <div key={tab.id} className={`mb-tab ${active ? "mb-tab--active" : ""}`}>
+            <div
+              key={tab.id}
+              className={`mb-tab ${active ? "mb-tab--active" : ""} ${menuFor === tab.id ? "mb-tab--menu-open" : ""}`}
+              onContextMenu={(e) => {
+                // Right-click a tab for its options, like Google Docs / Sheets.
+                e.preventDefault();
+                setMenuFor(tab.id);
+              }}
+            >
               <button
                 type="button"
                 role="tab"
@@ -82,35 +91,32 @@ export function TabStrip(props: TabStripProps) {
               >
                 {tab.name}
               </button>
-              {active && (
-                <Menu
-                  label={`Options for tab ${tab.name}`}
-                  className="mb-tab__menu"
-                  align="start"
-                  trigger={<span className="mb-tab__chevron" aria-hidden="true">▾</span>}
-                  items={[
-                    { label: "Rename", icon: <PencilIcon />, onSelect: () => startRename(tab) },
-                    { label: "Duplicate", icon: <CopyIcon />, onSelect: () => props.onDuplicate(tab.id) },
-                    ...(index > 0
-                      ? [{ label: "Move left", onSelect: () => props.onMove(tab.id, -1) }]
-                      : []),
-                    ...(index < tabs.length - 1
-                      ? [{ label: "Move right", onSelect: () => props.onMove(tab.id, 1) }]
-                      : []),
-                    ...(tabs.length > 1
-                      ? [
-                          "separator" as const,
-                          {
-                            label: "Delete tab",
-                            icon: <TrashIcon />,
-                            danger: true,
-                            onSelect: () => props.onDelete(tab.id),
-                          },
-                        ]
-                      : []),
-                  ]}
-                />
-              )}
+              <Menu
+                label={`Options for tab ${tab.name}`}
+                triggerTitle="Tab options (or right-click the tab)"
+                className="mb-tab__menu"
+                align="start"
+                open={menuFor === tab.id}
+                onOpenChange={(open) => setMenuFor(open ? tab.id : null)}
+                trigger={<span className="mb-tab__chevron" aria-hidden="true">▾</span>}
+                items={[
+                  { label: "Rename", icon: <PencilIcon />, onSelect: () => startRename(tab) },
+                  { label: "Duplicate", icon: <CopyIcon />, onSelect: () => props.onDuplicate(tab.id) },
+                  ...(index > 0 ? [{ label: "Move left", onSelect: () => props.onMove(tab.id, -1) }] : []),
+                  ...(index < tabs.length - 1
+                    ? [{ label: "Move right", onSelect: () => props.onMove(tab.id, 1) }]
+                    : []),
+                  "separator" as const,
+                  {
+                    label: "Delete tab",
+                    icon: <TrashIcon />,
+                    danger: true,
+                    disabled: tabs.length < 2,
+                    hint: tabs.length < 2 ? "A mindboard needs at least one tab" : undefined,
+                    onSelect: () => props.onDelete(tab.id),
+                  },
+                ]}
+              />
             </div>
           );
         })}
