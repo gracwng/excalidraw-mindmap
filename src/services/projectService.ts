@@ -8,7 +8,7 @@ import type { ExcalidrawElement, PersistedAppState, Project, BinaryFiles } from 
 import { PERSISTED_APP_STATE_KEYS } from "../types/project";
 import { notifyProjectsChanged } from "../lib/projectEvents";
 
-export const DEFAULT_PROJECT_NAME = "Untitled mind map";
+export const DEFAULT_PROJECT_NAME = "Untitled mindboard";
 
 export function generateProjectId() {
   // randomUUID only exists in secure contexts (HTTPS/localhost). Fall back to

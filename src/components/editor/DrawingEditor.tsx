@@ -86,7 +86,7 @@ export function DrawingEditor({ project }: DrawingEditorProps) {
       },
       onRemoteRename: (next) => setName(next),
       onRemoteDelete: () => {
-        toast("This mind map was deleted on another device.");
+        toast("This mindboard was deleted on another device.");
         navigate("/", { replace: true });
       },
     });
@@ -195,7 +195,7 @@ export function DrawingEditor({ project }: DrawingEditorProps) {
               All projects
             </MainMenu.Item>
             <MainMenu.Item icon={<PlusIcon />} onSelect={() => void handleNewProject()}>
-              New mind map
+              New mindboard
             </MainMenu.Item>
             <MainMenu.Separator />
             <MainMenu.DefaultItems.LoadScene />

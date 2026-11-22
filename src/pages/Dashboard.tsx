@@ -172,7 +172,7 @@ export default function Dashboard() {
             disabled={busy}
           >
             <PlusIcon />
-            New mind map
+            New mindboard
           </button>
           <input
             ref={fileInputRef}
@@ -206,7 +206,7 @@ export default function Dashboard() {
               total={projects.length}
             />
             {visible.length === 0 ? (
-              <p className="mb-no-results">No mind maps match “{query}”.</p>
+              <p className="mb-no-results">No mindboards match “{query}”.</p>
             ) : (
               <ProjectGrid projects={visible} {...actions} />
             )}

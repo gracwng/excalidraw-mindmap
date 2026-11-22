@@ -45,7 +45,7 @@ with sync_playwright() as p:
     check("signed-in sync status shown", "Synced" in wait_until(lambda: laptop.inner_text("[data-testid=sync-status]") if "Synced" in laptop.inner_text("[data-testid=sync-status]") else None, 10) or "")
 
     # 1. Create + draw on laptop -> appears on iPad dashboard
-    laptop.get_by_role("button", name="New mind map").first.click()
+    laptop.get_by_role("button", name="New mindboard").first.click()
     laptop.wait_for_url("**/project/*"); laptop.wait_for_selector(".excalidraw canvas"); laptop.wait_for_timeout(800)
     pid = laptop.url.split("/project/")[1]
     draw(laptop, "r", 500, 300, 700, 420)
@@ -135,7 +135,7 @@ with sync_playwright() as p:
     # 11. Offline then online
     ctx = laptop.context
     ctx.set_offline(True)
-    laptop.get_by_role("button", name="New mind map").first.click()
+    laptop.get_by_role("button", name="New mindboard").first.click()
     laptop.wait_for_selector(".excalidraw canvas"); laptop.wait_for_timeout(500)
     pid2 = laptop.url.split("/project/")[1]
     draw(laptop, "r", 500, 300, 600, 400)

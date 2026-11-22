@@ -35,14 +35,14 @@ with sync_playwright() as p:
     check("empty state shows", page.locator(".mb-empty").is_visible())
 
     # 2. Create project -> editor
-    page.get_by_role("button", name="New mind map").first.click()
+    page.get_by_role("button", name="New mindboard").first.click()
     page.wait_for_url("**/project/*")
     page.wait_for_selector(".excalidraw canvas", timeout=20000)
     page.wait_for_timeout(1000)
     page.screenshot(path=f"{OUT}/02-new-editor.png")
     pid1 = page.url.split("/project/")[1]
     check("editor renders excalidraw", page.locator(".excalidraw .App-toolbar").count() > 0 or page.locator(".excalidraw").count() > 0)
-    check("default name", "Untitled mind map" in page.locator(".mb-editor-header").inner_text())
+    check("default name", "Untitled mindboard" in page.locator(".mb-editor-header").inner_text())
 
     # 3. Draw shapes, check autosave
     draw_rect(page, 500, 300, 700, 420)
@@ -197,9 +197,9 @@ with sync_playwright() as p:
     page.screenshot(path=f"{OUT}/07-dark-dashboard.png")
 
     # 15. Search + sort
-    page.get_by_label("Search mind maps").fill("copy")
+    page.get_by_label("Search mindboards").fill("copy")
     check("search filters", page.locator("[data-testid=project-card]").count() == 1)
-    page.get_by_label("Search mind maps").fill("")
+    page.get_by_label("Search mindboards").fill("")
     page.get_by_label("Sort projects").select_option("name")
     titles = page.locator(".mb-card__title").all_inner_texts()
     check("sort by name", titles == sorted(titles, key=str.lower), str(titles))

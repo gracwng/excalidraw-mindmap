@@ -62,7 +62,7 @@ export function AuthDialog({ onClose }: AuthDialogProps) {
           {mode === "sign-in" ? "Sign in to sync" : "Create your account"}
         </h2>
         <p className="mb-modal__body">
-          Your mind maps stay on this device and sync privately to your account, so they show up
+          Your mindboards stay on this device and sync privately to your account, so they show up
           on your laptop and iPad.
         </p>
         <label className="mb-field">

@@ -11,7 +11,7 @@ import type { Project } from "../types/project";
 export type ExportFormat = "excalidraw" | "png" | "svg";
 
 function safeFileName(name: string) {
-  return name.replace(/[\\/:*?"<>|]+/g, "-").trim() || "mind-map";
+  return name.replace(/[\\/:*?"<>|]+/g, "-").trim() || "mindboard";
 }
 
 function downloadBlob(blob: Blob, fileName: string) {
@@ -36,7 +36,7 @@ export async function exportProject(project: Project, format: ExportFormat) {
     return;
   }
 
-  if (elements.length === 0) throw new Error("This mind map is empty — nothing to export.");
+  if (elements.length === 0) throw new Error("This mindboard is empty — nothing to export.");
 
   const appState = {
     viewBackgroundColor: project.appState.viewBackgroundColor ?? "#ffffff",

@@ -22,7 +22,7 @@ export default function ProjectEditor() {
     return (
       <div className="mb-fullscreen-message">
         <h1 className="mb-handwritten">
-          {state.status === "missing" ? "This mind map doesn't exist" : state.message}
+          {state.status === "missing" ? "This mindboard doesn't exist" : state.message}
         </h1>
         <p>It may have been deleted, or the link is wrong.</p>
         <Link to="/" className="mb-button mb-button--primary">

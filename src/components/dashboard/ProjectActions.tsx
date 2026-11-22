@@ -25,15 +25,15 @@ export function ProjectActions({
         <SearchIcon />
         <input
           type="search"
-          placeholder="Search mind maps"
+          placeholder="Search mindboards"
           value={query}
           onChange={(e) => onQueryChange(e.target.value)}
-          aria-label="Search mind maps"
+          aria-label="Search mindboards"
         />
       </label>
       <div className="mb-toolbar__right">
         <span className="mb-toolbar__count">
-          {query ? `${count} of ${total}` : `${total} ${total === 1 ? "mind map" : "mind maps"}`}
+          {query ? `${count} of ${total}` : `${total} ${total === 1 ? "mindboard" : "mindboards"}`}
         </span>
         <label className="mb-sort">
           <span>Sort by</span>

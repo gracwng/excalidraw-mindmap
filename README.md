@@ -3,11 +3,11 @@
 A browser-based mind-mapping app built **around** the official
 [Excalidraw](https://github.com/excalidraw/excalidraw) editor. Inside a project it
 *is* Excalidraw — same canvas, tools, menus, shortcuts and dark mode. On top of that it
-adds a project dashboard, so you can keep many independent mind maps that save automatically.
+adds a project dashboard, so you can keep many independent mindboards that save automatically.
 
 ## Features
 
-- **Dashboard** — every mind map as a card with a live thumbnail, search,
+- **Dashboard** — every mindboard as a card with a live thumbnail, search,
   sort (last modified / created / name), rename, duplicate, delete, export.
 - **The real Excalidraw editor** (`@excalidraw/excalidraw@0.18.1`) with its default UI,
   plus a slim header: `← Projects · Project name ✎ · Saved · ⋯`.

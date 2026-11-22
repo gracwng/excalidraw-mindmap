@@ -21,12 +21,12 @@ export function EmptyState({ onCreate, onImport }: EmptyStateProps) {
           <rect x="180" y="94" width="40" height="22" rx="6" />
         </g>
       </svg>
-      <h2 className="mb-handwritten">No mind maps yet</h2>
+      <h2 className="mb-handwritten">No mindboards yet</h2>
       <p>Create your first one, or import an existing .excalidraw file.</p>
       <div className="mb-empty__actions">
         <button type="button" className="mb-button mb-button--primary" onClick={onCreate}>
           <PlusIcon />
-          New mind map
+          New mindboard
         </button>
         <button type="button" className="mb-button" onClick={onImport}>
           <UploadIcon />
