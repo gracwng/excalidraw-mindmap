@@ -10,7 +10,12 @@ adds a project dashboard, so you can keep many independent mindboards that save 
 - **Dashboard** — every mindboard as a card with a live thumbnail, search,
   sort (last modified / created / name), rename, duplicate, delete, export.
 - **Tabs** — like Google Docs tabs: each mindboard can hold several canvases. Add, rename
-  (double-click), duplicate, reorder and delete them from the tab strip in the header.
+  (double-click), duplicate, reorder and delete them from each tab's ▾ menu (or right-click
+  a tab).
+- **Lists** — Docs-style bullets and numbering in any text or box label: type `- ` or `* `
+  for a bullet, `1. ` to start numbering; Enter continues the list, Enter on an empty item
+  ends it, Tab/Shift+Tab nest, numbers renumber themselves. ⌘⇧8 / ⌘⇧7 (Ctrl+Shift on
+  Windows) toggle bullets / numbers on the selected lines, or on selected text boxes.
 - **Links** — write `[words](https://…)` in any text or box and it shows just the words,
   linked; a typed URL links itself; paste a URL with shapes selected to link them.
   ⌘-click (Ctrl-click on Windows) a linked shape to open it, or tap its link icon on iPad.
@@ -138,7 +143,7 @@ large, image-heavy drawings. Images are only written once, the first time they a
 `npm test` runs the sync engine unit tests (two simulated devices with separate
 IndexedDB databases and an in-memory cloud: merges, deletes, images, offline, no ping-pong).
 
-`tests/tabs_links_e2e.py` covers tabs and links in one browser, and `tests/tabs_sync_e2e.py`
+`tests/lists_e2e.py` types lists into the real editor; `tests/tabs_links_e2e.py` covers tabs and links in one browser, and `tests/tabs_sync_e2e.py`
 syncs tabs between two (same setup as the sync test below).
 
 `tests/sync_e2e.py` drives two real browsers ("laptop" and "iPad") against
@@ -166,6 +171,9 @@ python3 tests/e2e.py http://localhost:4173 test-output
 - Excalidraw logs `Failed to use workers for subsetting` when exporting under Vite.
   It falls back to the main thread automatically and exports work normally.
 - Undo history is per session (same as Excalidraw), and per tab.
+- Excalidraw text is plain text (one font, size and colour per text box), so lists are
+  written as text: wrapped lines of a long item don't indent under the bullet, and there's
+  no bold/italic.
 - A link belongs to a whole text or shape, not to single words inside it; that's how
   Excalidraw draws text. With several `[label](url)` in one text, the first URL is used.
 - With sync off, two tabs editing the *same* project at once will overwrite each other.

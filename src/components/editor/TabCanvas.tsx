@@ -9,8 +9,9 @@ import {
   Excalidraw,
   getCommonBounds,
   newElementWith,
-  restoreElements,
 } from "@excalidraw/excalidraw";
+import { withNewText } from "./textUpdates";
+import { installListEditing } from "./listEditing";
 import "@excalidraw/excalidraw/index.css";
 import type {
   AppState,
@@ -27,6 +28,7 @@ import type {
 import { useAutosave } from "../../hooks/useAutosave";
 import { getThemePreference, setThemePreference } from "../../lib/theme";
 import { extractTextLink, hostOf, isUrl, normalizeUrl, openLinkShortcut } from "../../lib/links";
+import { parseListLine } from "../../lib/lists";
 import type { PersistedAppState, SaveStatus } from "../../types/project";
 
 export interface TabCanvasController {
@@ -48,19 +50,10 @@ interface TabCanvasProps {
   children?: ReactNode;
 }
 
-/**
- * After a box's label gets shorter, put it back where Excalidraw would: centred
- * for the default middle/center alignment (top/bottom and left/right keep their edge).
- */
-function recenterInContainer(text: ExcalidrawTextElement, container: ExcalidrawElement) {
-  let { x, y } = text;
-  if (text.verticalAlign === "middle") y = container.y + (container.height - text.height) / 2;
-  if (text.textAlign === "center") x = container.x + (container.width - text.width) / 2;
-  return { ...text, x, y };
-}
-
 /** Marks text we've already auto-linked, so removing that link later sticks. */
 const AUTO_LINKED = "mindboardAutoLinked";
+/** Marks box labels we've left-aligned for a list, so re-centring them later sticks. */
+const LIST_ALIGNED = "mindboardListAligned";
 
 export function TabCanvas(props: TabCanvasProps) {
   const { projectId, tabId, controllerRef, onSaveStatus } = props;
@@ -98,10 +91,12 @@ export function TabCanvas(props: TabCanvasProps) {
   }, [controllerRef, flush, adoptBaseline]);
 
   /**
-   * Turns `[label](url)` into a linked "label", and links text that contains a
-   * URL. Runs on text that isn't being edited, once per element version.
+   * Tidies text once you've finished typing it (runs on text that isn't being
+   * edited, once per element version):
+   *   - `[label](url)` becomes a linked "label"; text containing a URL is linked
+   *   - a list in a centred box label is left-aligned (once)
    */
-  const linkifyTexts = useCallback(() => {
+  const tidyTexts = useCallback(() => {
     const api = apiRef.current;
     if (!api) return;
     const editingId = api.getAppState().editingTextElement?.id;
@@ -117,6 +112,23 @@ export function TabCanvas(props: TabCanvasProps) {
 
       const text = el as ExcalidrawTextElement;
       const { text: newText, url, explicit } = extractTextLink(text.originalText ?? text.text);
+
+      // A list inside a centred box label reads better left-aligned (once; you can re-centre it).
+      const alignForList =
+        !!text.containerId &&
+        text.textAlign === "center" &&
+        !text.customData?.[LIST_ALIGNED] &&
+        newText.split("\n").filter((line) => parseListLine(line)).length >= 2;
+      if (alignForList && !url) {
+        replacements.set(
+          text.id,
+          withNewText(all, text, newText, {
+            textAlign: "left",
+            customData: { ...text.customData, [LIST_ALIGNED]: true },
+          }),
+        );
+        continue;
+      }
       if (!url) continue;
       const container = text.containerId ? byId.get(text.containerId) : undefined;
       const target = container && !container.isDeleted ? container : text;
@@ -124,23 +136,15 @@ export function TabCanvas(props: TabCanvasProps) {
       // Bare URLs link once; explicit [label](url) always (re)links.
       if (!explicit && (alreadyAuto || target.link)) continue;
 
-      let updatedText: ExcalidrawElement = newElementWith(text, {
-        text: newText,
-        originalText: newText,
-        customData: { ...text.customData, [AUTO_LINKED]: true },
+      const updatedText = withNewText(all, text, newText, {
+        customData: {
+          ...text.customData,
+          [AUTO_LINKED]: true,
+          ...(alignForList ? { [LIST_ALIGNED]: true } : {}),
+        },
+        ...(alignForList ? { textAlign: "left" as const } : {}),
         ...(target === text ? { link: url } : {}),
       });
-      if (newText !== (text.originalText ?? text.text)) {
-        // Re-measure (and re-wrap inside a box) now that the text is shorter.
-        const subset = all.filter((e) => e.id === text.id || e.id === container?.id);
-        const restored = restoreElements(
-          subset.map((e) => (e.id === text.id ? updatedText : e)),
-          null,
-          { refreshDimensions: true, repairBindings: true },
-        );
-        updatedText = restored.find((e) => e.id === text.id) ?? updatedText;
-        if (container) updatedText = recenterInContainer(updatedText as ExcalidrawTextElement, container);
-      }
       replacements.set(text.id, updatedText);
       if (target !== text) replacements.set(target.id, newElementWith(target, { link: url }));
       firstUrl ??= url;
@@ -166,9 +170,9 @@ export function TabCanvas(props: TabCanvasProps) {
       // Excalidraw's own theme toggle drives the app-wide preference.
       if (appState.theme !== getThemePreference()) setThemePreference(appState.theme);
       // Defer: don't update the scene from inside Excalidraw's change callback.
-      setTimeout(linkifyTexts, 0);
+      setTimeout(tidyTexts, 0);
     },
-    [autosaveOnChange, linkifyTexts],
+    [autosaveOnChange, tidyTexts],
   );
 
   /** Pasting a URL while shapes are selected links them instead of adding a URL box. */
@@ -205,6 +209,9 @@ export function TabCanvas(props: TabCanvasProps) {
     });
     return false;
   }, []);
+
+  // Bullet and numbered lists while typing (see listEditing.ts).
+  useEffect(() => installListEditing(() => apiRef.current), []);
 
   // ⌘/Ctrl-click anywhere on a linked shape or text opens its link.
   const [api, setApi] = useState<ExcalidrawImperativeAPI | null>(null);
