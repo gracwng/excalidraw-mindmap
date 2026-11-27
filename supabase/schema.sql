@@ -100,3 +100,8 @@ drop policy if exists "mindboard files: owner can delete" on storage.objects;
 create policy "mindboard files: owner can delete" on storage.objects
   for delete to authenticated
   using (bucket_id = 'mindboard-files' and (storage.foldername(name))[1] = (select auth.uid())::text);
+
+-- ---------------------------------------------------------------------------
+-- Make the API see any new columns (e.g. tabs) right away.
+-- ---------------------------------------------------------------------------
+notify pgrst, 'reload schema';
