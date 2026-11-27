@@ -1,4 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { RemoteError } from "./syncErrors";
 import type { BinaryFileData, ExcalidrawElement, PersistedAppState } from "../../types/project";
 import { defaultTab } from "../../lib/tabs";
 import type {
@@ -68,7 +69,7 @@ export class SupabaseRemote implements RemoteStore {
         .select("id, revision, deleted")
         .order("id")
         .range(from, from + PAGE_SIZE - 1);
-      if (error) throw error;
+      if (error) throw new RemoteError("listing your mindboards", error);
       all.push(...data.map((r) => ({ id: r.id, revision: Number(r.revision), deleted: r.deleted })));
       if (data.length < PAGE_SIZE) return all;
     }
@@ -76,7 +77,7 @@ export class SupabaseRemote implements RemoteStore {
 
   async getProject(id: string) {
     const { data, error } = await this.client.from(TABLE).select("*").eq("id", id).maybeSingle();
-    if (error) throw error;
+    if (error) throw new RemoteError("downloading a mindboard", error);
     return data ? fromRow(data as ProjectRow) : null;
   }
 
@@ -84,7 +85,7 @@ export class SupabaseRemote implements RemoteStore {
     const { error } = await this.client.from(TABLE).insert({ ...toRow(project), revision: 1 });
     if (error) {
       if (error.code === "23505") return { ok: false, reason: "conflict" };
-      throw error;
+      throw new RemoteError("uploading a new mindboard", error);
     }
     return { ok: true, revision: 1 };
   }
@@ -98,7 +99,7 @@ export class SupabaseRemote implements RemoteStore {
       .eq("revision", expectedRevision)
       .eq("deleted", false)
       .select("revision");
-    if (error) throw error;
+    if (error) throw new RemoteError("uploading changes", error);
     return data.length === 1 ? { ok: true, revision } : { ok: false, reason: "conflict" };
   }
 
@@ -107,7 +108,7 @@ export class SupabaseRemote implements RemoteStore {
       .from(TABLE)
       .update({ deleted: true, tabs: [], elements: [], app_state: {} })
       .eq("id", id);
-    if (error) throw error;
+    if (error) throw new RemoteError("deleting a mindboard", error);
   }
 
   private path(projectId: string, fileId?: string) {
@@ -119,7 +120,7 @@ export class SupabaseRemote implements RemoteStore {
     const { error } = await this.client.storage
       .from(BUCKET)
       .upload(this.path(projectId, file.id), body, { upsert: true, contentType: "application/json" });
-    if (error) throw error;
+    if (error) throw new RemoteError("uploading an image", error);
   }
 
   async downloadFile(projectId: string, fileId: string) {
@@ -129,19 +130,19 @@ export class SupabaseRemote implements RemoteStore {
     if (error) {
       const status = (error as { status?: number; statusCode?: string }).status;
       if (status === 400 || status === 404 || /not found/i.test(error.message)) return null;
-      throw error;
+      throw new RemoteError("downloading an image", error);
     }
     return JSON.parse(await data.text()) as BinaryFileData;
   }
 
   async deleteFiles(projectId: string) {
     const { data, error } = await this.client.storage.from(BUCKET).list(this.path(projectId));
-    if (error) throw error;
+    if (error) throw new RemoteError("deleting images", error);
     if (!data.length) return;
     const { error: removeError } = await this.client.storage
       .from(BUCKET)
       .remove(data.map((f) => this.path(projectId, f.name)));
-    if (removeError) throw removeError;
+    if (removeError) throw new RemoteError("deleting images", removeError);
   }
 
   subscribe(onChange: () => void) {

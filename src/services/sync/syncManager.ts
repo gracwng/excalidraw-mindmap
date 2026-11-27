@@ -10,6 +10,7 @@ import { updateThumbnail } from "../thumbnailService";
 import { SupabaseRemote } from "./supabaseRemote";
 import { SyncEngine, type MergeElements } from "./syncEngine";
 import type { RemoteStore } from "./remote";
+import { describeSyncError } from "./syncErrors";
 import { getActiveEditor } from "../../lib/activeEditors";
 import { notifyProjectsChanged, subscribeProjectsChanged } from "../../lib/projectEvents";
 import { loadExcalidraw } from "../../lib/excalidraw";
@@ -242,11 +243,11 @@ class SyncManager {
         this.setState({ status: "synced", lastSyncedAt: Date.now(), error: null });
       } catch (err) {
         if (this.engine !== engine) return;
-        console.warn("Sync failed", err);
+        console.warn(`Sync failed: ${err instanceof Error ? err.message : describeSyncError(err)}`, err);
         const offline = typeof navigator !== "undefined" && navigator.onLine === false;
         this.setState({
           status: offline ? "offline" : "error",
-          error: offline ? null : describeError(err),
+          error: offline ? null : describeSyncError(err),
         });
         const delay = RETRY_DELAYS_MS[Math.min(this.failures, RETRY_DELAYS_MS.length - 1)];
         this.failures += 1;
@@ -261,23 +262,6 @@ class SyncManager {
 
 async function refreshThumbnail(projectId: string) {
   await updateThumbnail(projectId).catch((err) => console.warn("Thumbnail update failed", err));
-}
-
-function describeError(err: unknown) {
-  const message = err instanceof Error ? err.message : String(err);
-  if (/column .*tabs|'tabs' column/i.test(message)) {
-    return "The cloud database needs updating for tabs (re-run supabase/schema.sql).";
-  }
-  if (/relation .*projects.* does not exist|Could not find the table/i.test(message)) {
-    return "The cloud database isn't set up yet (run supabase/schema.sql).";
-  }
-  if (/Bucket not found/i.test(message)) {
-    return "Image storage isn't set up yet (run supabase/schema.sql).";
-  }
-  if (/Failed to fetch|NetworkError|Load failed/i.test(message)) {
-    return "Can't reach the sync server.";
-  }
-  return message;
 }
 
 function friendlyAuthError(message: string) {
